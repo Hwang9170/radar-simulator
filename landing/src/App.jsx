@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   PHASES, TOTAL_MIN, EQUIP, EQUIP_ORDER, SIZES, HOTSPOTS, CONTROLS, KEYS, QUIZ_SETS, GRADES,
   LEVELS, XP_RULES, BADGES, AI_SAMPLES, LESSON, FAQ, simLink,
@@ -92,12 +92,12 @@ function Overview() {
           <h3>크레이터 규모 3종</h3>
           <p className="muted">왼쪽 위 「소형 · 중형 · 대형」 버튼으로 바꿉니다. 지형과 아래 치수, 장비 동선이 함께 바뀝니다.</p>
           <div className="tbl">
-            <table>
+            <table className="stack">
               <thead><tr><th>규모</th><th>겉보기 직경</th><th>깊이</th><th>융기부 직경</th><th>절단 규격</th><th /></tr></thead>
               <tbody>
                 {SIZES.map((s) => (
-                  <tr key={s.key}><td><b>{s.label}</b></td><td>{s.dia}</td><td>{s.depth}</td><td>{s.up}</td><td>{s.cut}</td>
-                    <td><a href={simLink({ size: s.key })}>이 규모로 열기 →</a></td></tr>
+                  <tr key={s.key}><td className="rowhead"><b>{s.label} 크레이터</b></td><td data-label="겉보기 직경">{s.dia}</td><td data-label="깊이">{s.depth}</td><td data-label="융기부 직경">{s.up}</td><td data-label="절단 규격">{s.cut}</td>
+                    <td className="rowlink"><a href={simLink({ size: s.key })}>이 규모로 열기 →</a></td></tr>
                 ))}
               </tbody>
             </table>
@@ -121,7 +121,7 @@ function Procedure() {
           <ol className="plist">
             {PHASES.map((q, j) => (
               <li key={j}>
-                <button className={j === i ? 'on' : ''} onClick={() => setI(j)} aria-current={j === i}>
+                <button className={j === i ? 'on' : ''} onClick={() => setI(j)} aria-current={j === i} aria-label={`${pad(j)} ${q.title}`} title={q.title}>
                   <span className="n">{pad(j)}</span><span className="t">{q.title}</span><span className="m">{q.min}분</span>
                 </button>
               </li>
@@ -155,17 +155,30 @@ function Procedure() {
 function Screen() {
   const [h, setH] = useState(0);
   const cur = HOTSPOTS[h];
+  const scroller = useRef(null);
+  // On phones the screenshot is wider than the screen; keep the chosen marker in view.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    const x = (HOTSPOTS[h].x / 100) * el.scrollWidth - el.clientWidth / 2;
+    el.scrollTo({ left: Math.max(0, x), behavior: 'smooth' });
+  }, [h]);
   return (
     <section id="screen" className="sec">
       <div className="wrap">
         <SecHead n="03" t="화면 안내 · 어디에 무엇이 있나요" d="실제 시뮬레이터 화면입니다. 번호를 누르면 그 부분이 무엇이고 누르면 어떻게 되는지 오른쪽에 설명이 나옵니다." />
         <div className="screen">
+          <div className="annotwrap">
+          <p className="swipe">← 이미지를 옆으로 밀어 보세요 →</p>
+          <div className="annotscroll" ref={scroller}>
           <div className="annot">
             <img src="./shots/ui.jpg" alt="시뮬레이터 전체 화면. 왼쪽 위 머리 패널, 가운데 3D 현장, 오른쪽 브리핑 창, 아래 재생 바와 타임라인." width="1440" height="860" />
             {HOTSPOTS.map((s, j) => (
               <button key={j} className={j === h ? 'hs on' : 'hs'} style={{ left: s.x + '%', top: s.y + '%' }}
                 onClick={() => setH(j)} aria-label={`${j + 1}. ${s.t}`}>{j + 1}</button>
             ))}
+          </div>
+          </div>
           </div>
           <aside className="hsinfo" aria-live="polite">
             <p className="k">{h + 1} / {HOTSPOTS.length}</p>
@@ -195,9 +208,9 @@ function Controls() {
             <div key={g.g} className="cgroup">
               <h3>{g.g}</h3>
               <div className="tbl">
-                <table>
+                <table className="stack">
                   <thead><tr><th>누르는 곳 · 동작</th><th>결과</th><th>참고</th></tr></thead>
-                  <tbody>{g.rows.map((r) => <tr key={r[0]}><td><b>{r[0]}</b></td><td>{r[1]}</td><td className="muted">{r[2]}</td></tr>)}</tbody>
+                  <tbody>{g.rows.map((r) => <tr key={r[0]}><td className="rowhead"><b>{r[0]}</b></td><td data-label="결과">{r[1]}</td><td data-label="참고" className="muted">{r[2]}</td></tr>)}</tbody>
                 </table>
               </div>
             </div>
@@ -344,7 +357,7 @@ function Game() {
         <div className="two">
           <div>
             <h3>XP 받는 방법</h3>
-            <div className="tbl"><table><tbody>{XP_RULES.map((r) => <tr key={r[0]}><td><b>{r[0]}</b></td><td className="num">{r[1]}</td><td className="muted">{r[2]}</td></tr>)}</tbody></table></div>
+            <div className="tbl"><table className="stack xp"><tbody>{XP_RULES.map((r) => <tr key={r[0]}><td className="rowhead"><b>{r[0]}</b> <span className="num">{r[1]}</span></td><td className="muted">{r[2]}</td></tr>)}</tbody></table></div>
           </div>
           <div>
             <h3>레벨 8단계</h3>
