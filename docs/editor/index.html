@@ -227,8 +227,8 @@ function mergeCfg(def,ov){if(!ov||typeof ov!=='object')return clone(def);const c
 let cfg;
 {const draft=store.get('radr.editor.draft');const applied=store.get('radr.cfg');
   cfg=mergeCfg(DEF,draft||applied||window.RADR_CONFIG||null);}
-let tab=(location.hash.slice(1)&&['overview','sizes','method','phases','equipment','crew','anim','quiz','export'].includes(location.hash.slice(1)))?location.hash.slice(1):(store.get('radr.editor.tab')||'overview');
-let selPhase=0,selEq=DEF.equipment.order[0],quizList='bank',quizFilter='';
+let tab=/^#phases\/\d+$/.test(location.hash)?'phases':(location.hash.slice(1)&&['overview','sizes','method','phases','equipment','crew','anim','quiz','export'].includes(location.hash.slice(1)))?location.hash.slice(1):(store.get('radr.editor.tab')||'overview');
+let selPhase=(/^#phases\/(\d+)$/.exec(location.hash)||[0,0])[1]|0,selEq=DEF.equipment.order[0],quizList='bank',quizFilter='';
 const hist={stack:[JSON.stringify(cfg)],i:0};
 let commitT=null;
 function snapshot(){const s=JSON.stringify(cfg);if(s===hist.stack[hist.i])return;hist.stack=hist.stack.slice(0,hist.i+1);hist.stack.push(s);if(hist.stack.length>80)hist.stack.shift();hist.i=hist.stack.length-1}
@@ -355,7 +355,7 @@ VIEWS.method=m=>{
 };
 // ---------- 03 단계 ----------
 VIEWS.phases=m=>{
-  m.append(h('h2',{text:'작업 순서 · 단계'}),h('p',{class:'lead',text:'공법 순서를 바꾸고(끌어서 놓기 또는 ↑↓), 단계를 켜고 끄고, 새 단계를 추가합니다. 「3D」 표시 단계는 장비 움직임과 지형 변화가 연결되어 있어 순서를 바꾸면 장면도 그 순서로 진행됩니다. 직접 추가한 단계는 장면 없이 설명·시간·인원만 표시됩니다.'}));
+  m.append(h('h2',{text:'작업 순서 · 단계'}),h('p',{class:'lead',text:'공법 순서를 바꾸고(끌어서 놓기 또는 ↑↓), 단계를 켜고 끄고, 새 단계를 추가합니다. 「3D」 표시 단계는 장비 움직임과 지형 변화가 연결되어 있어 순서를 바꾸면 장면도 그 순서로 진행됩니다. 직접 추가한 단계는 아래 「애니메이션 만들기」에서 장비와 작업자의 움직임을 골라 장면을 만듭니다.'}));
   if(selPhase>=cfg.phases.length)selPhase=cfg.phases.length-1;
   const list=h('div',{class:'phl'});let dragFrom=null;
   let vi=0;
@@ -363,7 +363,7 @@ VIEWS.phases=m=>{
     const tg=h('input',{type:'checkbox',checked:on,title:'사용',onclick:e=>e.stopPropagation(),onchange:e=>{p.on=e.target.checked;changed(true)}});
     const it=h('div',{class:'phi'+(i===selPhase?' sel':'')+(on?'':' off'),draggable:'true',onclick:()=>{selPhase=i;render();if(on)pvJump(visPhases().indexOf(p))}},
       tg,h('span',{class:'n',text:num}),h('span',{class:'t'},p.title||'(이름 없음)',h('small',{text:`${p.real}분 · ${p.dur}초 · ${p.crew||0}명`})),
-      builtin?h('span',{class:'tag a',text:'3D'}):h('span',{class:'tag c',text:'사용자'}),
+      builtin?h('span',{class:'tag a',text:'3D'}):h('span',{class:'tag c',text:(p.anim&&((p.anim.acts||[]).length||(p.anim.crew&&p.anim.crew.count>0)))?'사용자 · 장면':'사용자'}),
       h('span',{class:'mv'},h('button',{class:'ic',title:'위로','aria-label':'위로',onclick:e=>{e.stopPropagation();if(moveArr(cfg.phases,i,i-1)){selPhase=i-1;changed(true)}}},'↑'),
         h('button',{class:'ic',title:'아래로','aria-label':'아래로',onclick:e=>{e.stopPropagation();if(moveArr(cfg.phases,i,i+1)){selPhase=i+1;changed(true)}}},'↓')));
     it.addEventListener('dragstart',e=>{dragFrom=i;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',String(i))}catch(_){}});
@@ -373,7 +373,7 @@ VIEWS.phases=m=>{
   const vp=visPhases();
   m.append(card('공법 순서',`사용 ${vp.length}단계 · 총 ${hm(vp.reduce((a,p)=>a+(+p.real||0),0))} · 애니메이션 ${Math.round(vp.reduce((a,p)=>a+(+p.dur||0),0))}초`,list,
     h('div',{class:'row'},
-      h('button',{onclick:()=>{const id='custom-'+Date.now().toString(36);cfg.phases.splice(selPhase+1,0,{id,on:true,title:'새 단계',en:'',real:10,dur:8,crew:0,m:'진행',goal:'',steps:[],equip:[]});selPhase=selPhase+1;changed(true)}},'+ 선택한 단계 뒤에 새 단계'),
+      h('button',{onclick:()=>{const id='custom-'+Date.now().toString(36);cfg.phases.splice(selPhase+1,0,{id,on:true,title:'새 단계',en:'',real:10,dur:10,crew:2,m:'진행',goal:'',steps:[],equip:[],anim:{acts:[],crew:{count:2,pattern:'patrol',label:'작업 요원',vest:'#f0782a'},dust:true}});selPhase=selPhase+1;changed(true)}},'+ 선택한 단계 뒤에 새 단계'),
       h('button',{onclick:async()=>{if(await confirmDlg('단계 순서·내용을 모두 기본값으로 되돌릴까요? (직접 추가한 단계는 삭제됩니다)')){cfg.phases=clone(DEF.phases);selPhase=0;changed(true)}}},'기본 순서로'))));
   const p=cfg.phases[selPhase];if(!p)return;const base=`phases.${selPhase}`;const builtin=PH_IDS.includes(p.id);
   const stepsBox=h('div',{class:'steps'});
@@ -382,7 +382,7 @@ VIEWS.phases=m=>{
     stepsBox.appendChild(h('div',null,h('button',{class:'sm',onclick:()=>{(p.steps=p.steps||[]).push('');drawSteps();changed(false);const l=stepsBox.querySelectorAll('input');l[l.length-1].focus()}},'+ 세부 작업 추가')))};drawSteps();
   const eqBox=h('div',{class:'eqchips'});cfg.equipment.order.forEach(k=>{const e=cfg.equipment.items[k];const c=h('input',{type:'checkbox',checked:(p.equip||[]).includes(k)});
     c.onchange=()=>{p.equip=cfg.equipment.order.filter(x=>x===k?c.checked:(p.equip||[]).includes(x));changed(false)};eqBox.appendChild(h('label',{class:e.on===false?'dis':'',title:e.on===false?'사용 안 함 장비':''},c,h('span',{class:'sw',style:`background:${e.color}`}),e.short))});
-  m.append(card(`단계 편집 · ${p.title||''}`,builtin?`3D 장면: ${BUILTIN_NAME[p.id]} (${p.id})`:'사용자 정의 단계 (3D 장면 없음)',
+  m.append(card(`단계 편집 · ${p.title||''}`,builtin?`3D 장면: ${BUILTIN_NAME[p.id]} (${p.id})`:'사용자 정의 단계 · 장면은 아래에서 구성',
     h('div',{class:'grid wide'},textF('단계 이름','phases.'+selPhase+'.title',{structural:true}),textF('영문 이름',base+'.en'),textF('진행 표시 이름',base+'.m',{hint:'예: 절단 길이'})),
     h('div',{class:'grid'},numF('실제 소요 시간',base+'.real',{min:0,max:600,step:1,unit:'분'}),numF('애니메이션 길이',base+'.dur',{min:4,max:120,step:1,unit:'초'}),numF('투입 인원',base+'.crew',{min:0,max:999,step:1,int:true,unit:'명'})),
     textF('목표 (설명)',base+'.goal',{area:true,rows:3,full:true}),
@@ -390,7 +390,34 @@ VIEWS.phases=m=>{
     h('div',{class:'f'},h('span',{text:'투입 장비 (브리핑 표시 · 자동 카메라 대상)'}),eqBox),
     h('div',{class:'row'},h('button',{disabled:p.on===false,onclick:()=>pvJump(visPhases().indexOf(p))},'미리보기에서 이 단계 보기'),
       builtin?h('span',{class:'note',text:'3D 단계는 삭제 대신 체크를 꺼서 숨깁니다.'}):h('button',{class:'danger',onclick:async()=>{if(!await confirmDlg(`「${p.title}」 단계를 삭제할까요?`))return;cfg.phases.splice(selPhase,1);selPhase=Math.max(0,selPhase-1);changed(true)}},'이 단계 삭제'))));
+  if(!builtin)m.append(animBuilder(p,base));
 };
+// 사용자 정의 단계 애니메이션 구성
+const ACT_PAT=[['pass','왕복 작업','보수 구역을 여러 줄로 왕복 (다짐·살포 같은 작업)'],['loop','둘레 순회','보수 구역 둘레를 돎 (점검·표시)'],['cross','가로지르기','활주로 방향으로 구역을 통과 (청소·운반)'],['standby','현장 대기','크레이터 옆으로 와서 정차 (지원·대기)']];
+const CREW_PAT=[['patrol','크레이터 둘레 순찰'],['line','한 줄로 도보 점검'],['stand','구역 둘레에 서서 작업']];
+function animBuilder(p,base){
+  p.anim=p.anim||{};const A=p.anim;A.acts=Array.isArray(A.acts)?A.acts:[];A.crew=A.crew||{count:0,pattern:'patrol',label:'작업 요원',vest:'#f0782a'};if(A.dust===undefined)A.dust=true;
+  const items=cfg.equipment.items,order=cfg.equipment.order;
+  const box=h('div',{class:'list',style:'gap:6px'});
+  A.acts.forEach((a,j)=>{
+    const es=h('select',{'aria-label':'장비'});order.forEach(k=>{const used=A.acts.some((x,jj)=>jj!==j&&x.k===k);es.appendChild(h('option',{value:k,text:items[k].name+(items[k].on===false?' (사용 안 함)':''),disabled:used}))});es.value=a.k;
+    es.onchange=()=>{a.k=es.value;changed(true)};
+    const ps=h('select',{'aria-label':'움직임'});ACT_PAT.forEach(([v,t,d])=>ps.appendChild(h('option',{value:v,text:t,title:d})));ps.value=a.pattern||'pass';
+    const desc=h('span',{class:'note'});const setD=()=>{const x=ACT_PAT.find(q=>q[0]===ps.value);desc.textContent=x?x[2]:''};setD();
+    ps.onchange=()=>{a.pattern=ps.value;setD();rp.disabled=a.pattern==='standby';changed(false)};
+    const rp=h('input',{type:'number',min:1,max:6,step:1,value:a.reps||2,'aria-label':'반복 횟수',style:'width:70px',disabled:a.pattern==='standby'});
+    rp.oninput=()=>{const v=parseInt(rp.value,10);if(v>=1&&v<=6){a.reps=v;changed(false)}};
+    box.appendChild(h('div',{class:'qi'},h('div',{class:'row'},h('span',{class:'sw',style:`background:${items[a.k].color}`}),h('div',{style:'flex:1 1 180px;min-width:0'},es),h('div',{style:'flex:1 1 140px;min-width:0'},ps),
+      h('label',{class:'chk',title:'줄 수 / 바퀴 수 / 통과 횟수'},'반복',rp),h('button',{class:'ic danger',title:'삭제','aria-label':'삭제',onclick:()=>{A.acts.splice(j,1);changed(true)}},'✕')),desc))});
+  if(!A.acts.length)box.appendChild(h('p',{class:'note',text:'아직 움직이는 장비가 없습니다. 「+ 장비 움직임 추가」를 누르세요.'}));
+  const free=order.filter(k=>items[k].on!==false&&!A.acts.some(a=>a.k===k));
+  const cp=h('select',{'aria-label':'작업자 움직임'});CREW_PAT.forEach(([v,t])=>cp.appendChild(h('option',{value:v,text:t})));cp.value=A.crew.pattern||'patrol';cp.onchange=()=>{A.crew.pattern=cp.value;changed(false)};
+  return card('애니메이션 만들기','이 단계의 3D 장면',
+    h('p',{class:'note',text:'장비는 대기 지역에서 출발해 고른 움직임을 단계 시간 안에 수행하고 돌아갑니다. 여기서 고른 장비는 투입 장비에 자동으로 들어갑니다. 길이는 위의 「애니메이션 길이」를 따릅니다.'}),
+    h('div',{class:'f'},h('span',{text:'장비 움직임'}),box,h('div',null,h('button',{class:'sm',disabled:!free.length,onclick:()=>{A.acts.push({k:free[0],pattern:'pass',reps:2});changed(true)}},'+ 장비 움직임 추가'))),
+    h('div',{class:'grid'},numF('작업자 수',base+'.anim.crew.count',{min:0,max:8,step:1,int:true,unit:'명'}),h('label',{class:'f'},h('span',{text:'작업자 움직임'}),cp),textF('작업자 이름표',base+'.anim.crew.label'),colorF('조끼 색',base+'.anim.crew.vest','#f0782a')),
+    h('div',{class:'row'},chkF('장비가 움직일 때 먼지 효과',base+'.anim.dust'),h('button',{disabled:p.on===false,onclick:()=>{clearTimeout(pvT);pvPhase=Math.max(0,visPhases().indexOf(p));pvLoad()}},'3D에 반영하고 보기')));
+}
 // ---------- 04 장비 ----------
 VIEWS.equipment=m=>{
   m.append(h('h2',{text:'장비'}),h('p',{class:'lead',text:'장비별 이름·역할·제원표와 3D 모델 색상·크기, 엔진 소리 높이를 바꿉니다. 「사용」을 끄면 3D 현장·평가·AI 답변에서 빠집니다.'}));

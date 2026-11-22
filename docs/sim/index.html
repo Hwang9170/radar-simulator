@@ -505,10 +505,17 @@ const EQ_KEYS=['eod','loader','dump','saw','excavator','roller','mixer','sweeper
 // 내장 단계 ID — 3D 애니메이션이 이 ID(=기본 순서 번호)에 연결됩니다. 순서·사용 여부는 설정에서 바꿀 수 있고,
 // 애니메이션이 없는 사용자 정의 단계도 끼워 넣을 수 있습니다.
 const PH_IDS=['alert','assess','debris','cut','excavate','backfill','compact','pour','cure','fod','mark'];
+// 사용자 정의 단계 애니메이션 레시피: {acts:[{k,pattern,reps}], crew:{count,pattern,label}, dust}
+const ACT_PATTERNS=['pass','loop','cross','standby'],CREW_PATTERNS=['patrol','line','stand'];
+function parseAnim(a){a=a&&typeof a==='object'?a:{};const seen={};
+  const acts=(Array.isArray(a.acts)?a.acts:[]).filter(x=>x&&EQ_KEYS.includes(x.k)&&!seen[x.k]&&(seen[x.k]=1)).slice(0,9)
+    .map(x=>({k:x.k,pattern:ACT_PATTERNS.includes(x.pattern)?x.pattern:'pass',reps:Math.round(num(x.reps,2,1,6))}));
+  const c=a.crew&&typeof a.crew==='object'?a.crew:{};
+  return {acts,crew:{count:Math.round(num(c.count,0,0,8)),pattern:CREW_PATTERNS.includes(c.pattern)?c.pattern:'patrol',label:str(c.label,'작업 요원'),vest:c.vest},dust:a.dust!==false}}
 const ALL=[];
 (CFG.phases||[]).forEach(p=>{if(!p)return;const bi=PH_IDS.indexOf(p.id);if(bi>=0&&ALL.some(q=>q.bi===bi))return;
   ALL.push({id:bi>=0?p.id:String(p.id||'custom-'+ALL.length),bi:bi>=0?bi:-1,on:p.on!==false,title:str(p.title,'단계'),en:str(p.en,''),real:num(p.real,10,0,600),dur:num(p.dur,10,4,120),crew:Math.round(num(p.crew,0,0,999)),
-    goal:String(p.goal||''),steps:(Array.isArray(p.steps)?p.steps:[]).map(String).filter(Boolean),m:str(p.m,'진행'),equip:(Array.isArray(p.equip)?p.equip:[]).filter(k=>EQ_KEYS.includes(k))})});
+    goal:String(p.goal||''),steps:(Array.isArray(p.steps)?p.steps:[]).map(String).filter(Boolean),m:str(p.m,'진행'),equip:(Array.isArray(p.equip)?p.equip:[]).filter(k=>EQ_KEYS.includes(k)),anim:bi>=0?null:parseAnim(p.anim)})});
 PH_IDS.forEach((id,bi)=>{if(!ALL.some(q=>q.bi===bi))ALL.push({id,bi,on:false,title:id,en:'',real:0,dur:4,crew:0,goal:'',steps:[],m:'',equip:[]})});
 if(!ALL.some(p=>p.on))ALL.forEach(p=>p.on=true);
 const A=[];ALL.forEach(p=>{if(p.bi>=0)A[p.bi]=p});
@@ -533,7 +540,9 @@ EQ_ORDER.forEach(k=>{const v=((CFG.equipment||{}).items||{})[k]||{};
     off:v.on===false,color:v.color,scale:num(v.scale,1,0.3,3),sound:num(v.sound,50,20,400)}});
 EQ_ORDER.forEach((k,i)=>{EQ[k].park={x:-40+i*9,z:40,a:PI/2}});
 const EQ_ON=EQ_ORDER.filter(k=>!EQ[k].off);
+ALL.forEach(p=>{if(p.anim){p.anim.acts=p.anim.acts.filter(a=>!EQ[a.k].off);p.anim.acts.forEach(a=>{if(!p.equip.includes(a.k))p.equip.push(a.k)})}});
 PH.forEach(p=>{p.equip=p.equip.filter(k=>!EQ[k].off)});
+const CUSTOM=ALL.filter(p=>p.on&&p.anim);
 const EQC=(k,d)=>hexOf(EQ[k].color,d);
 
 // ---------- three setup ----------
@@ -1251,7 +1260,7 @@ function buildFigure(vest){const g=new THREE.Group();const V=vest||VEST;
   cylY(g,0.05,0.1,SKIN,0,1.57,0,8);const hd=new THREE.Mesh(new THREE.SphereGeometry(0.11,14,10),SKIN);hd.position.set(0,1.69,0);hd.scale.set(1,1.1,0.95);hd.castShadow=true;g.add(hd);
   const helm=new THREE.Mesh(new THREE.SphereGeometry(0.135,14,8,0,PI*2,0,PI/2),HELMET);helm.position.y=1.71;helm.scale.set(1.05,0.85,1);helm.castShadow=true;g.add(helm);
   box(g,0.04,0.03,0.18,BLACK,0.09,1.62,0);
-  return {g,legs,arms,walk:0}}
+  return {g,legs,arms,walk:0,vest:V}}
 function animFigure(f,dist,pose){f.walk+=dist*3.2/CREW_H;const s=Math.sin(f.walk);const amp=pose==='stand'?0:0.5;
   f.legs[0].rotation.z=s*amp;f.legs[1].rotation.z=-s*amp;
   if(pose==='wave'){f.arms[0].rotation.z=0;f.arms[1].rotation.x=-2.5+Math.sin(performance.now()/180)*0.4}
@@ -1284,8 +1293,9 @@ const crewMeasure=Array.from({length:nCrew('measure',2,6)},()=>buildFigure(vestM
 const crewSignals=Array.from({length:nCrew('signal',1,4)},()=>buildFigure(vestMat(crewGrp('signal').vest,0xc8e83a,0x1a2000)));
 const crewFinish=Array.from({length:nCrew('finish',2,8)},()=>buildFigure(vestMat(crewGrp('finish').vest,0xf0782a,0x301000)));
 const crewSignal=crewSignals[0]||null;
-[...crewMeasure,...crewSignals,...crewFinish].forEach(c=>c.g.scale.setScalar(CREW_H));
-[...crewMeasure,...crewSignals,...crewFinish].forEach(c=>{c.g.visible=false;c.g.traverse(m=>{if(m.isMesh){m.castShadow=true}});scene.add(c.g);CREW.push(c)});
+const crewCustom=Array.from({length:Math.max(0,...CUSTOM.map(p=>p.anim.crew.count))},()=>buildFigure(vestMat(null,0xf0782a,0x301000)));
+[...crewMeasure,...crewSignals,...crewFinish,...crewCustom].forEach(c=>c.g.scale.setScalar(CREW_H));
+[...crewMeasure,...crewSignals,...crewFinish,...crewCustom].forEach(c=>{c.g.visible=false;c.g.traverse(m=>{if(m.isMesh){m.castShadow=true}});scene.add(c.g);CREW.push(c)});
 const screed=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.08,1),M(0xb8bcbe,{metalness:.8,roughness:.3}));screed.castShadow=true;screed.visible=false;scene.add(screed);
 const crew=crewMeasure;
 const jet=buildJet();jet.g.visible=false;scene.add(jet.g);
@@ -1312,7 +1322,18 @@ function trip(k,t0,t1,work){const p=EQ[k].park;if(t1-t0<2.5)return [];return [{t
 function buildPaths(){
   const {R,S}=SC;const Ps={};
   const start=k=>[{t:0,x:EQ[k].park.x,z:EQ[k].park.z}];
-  const seq=(k,...trips)=>start(k).concat(...trips.filter(a=>a.length).sort((a,b)=>a[0].t-b[0].t));
+  // 사용자 정의 단계의 장비 움직임 생성
+  const CX={};
+  CUSTOM.forEach(ph=>{const n=ph.anim.acts.length;ph.anim.acts.forEach((a,ai)=>{const k=a.k;const at=(u,x,z,o)=>Object.assign({t:ph.s+ph.d*u,x,z},o||{});
+    const lane=n>1?(ai/(n-1)-0.5):0;let w=[];const r=a.reps;
+    if(a.pattern==='pass'){const rows=Math.max(1,r);for(let j=0;j<rows;j++){const z=(rows===1?0:(j/(rows-1)-0.5)*1.1*S)+lane*0.8;const u0=0.1+0.8*j/rows,u1=0.1+0.8*(j+0.85)/rows;
+        if(j%2===0)w.push(at(u0,-S-4,z,j?{rev:true}:undefined),at(u1,S-2,z));else w.push(at(u0,S-2,z),at(u1,-S-4,z,{rev:true}))}}
+    else if(a.pattern==='loop'){const d=S+3+ai*2.2;const c=[[-d,-d],[d,-d],[d,d],[-d,d]];w.push(at(0.1,-d-4,d));let q=0;const tot=r*4;
+      for(let l=0;l<r;l++)for(let ci=0;ci<4;ci++){q++;const [x,z]=c[ci];w.push(at(0.1+0.8*q/tot,x,z,{lin:true}))}}
+    else if(a.pattern==='cross'){const z=lane*S*0.9;for(let j=0;j<r;j++){const u0=0.1+0.8*j/r,u1=0.1+0.8*(j+0.9)/r;const [x0,x1]=j%2?[S+8,-S-8]:[-S-8,S+8];w.push(at(u0,x0,z),at(u1,x1,z,{lin:true}))}}
+    else{const z=-S*0.5+ai*4.5;w.push(at(0.12,S+7,z),at(0.88,S+7,z))}
+    (CX[k]=CX[k]||[]).push(trip(k,ph.s,ph.s+ph.d,w))})});
+  const seq=(k,...trips)=>start(k).concat(...trips.concat(CX[k]||[]).filter(a=>a.length).sort((a,b)=>a[0].t-b[0].t));
   const at=(i,u,x,z,o)=>Object.assign({t:P(i,u),x,z},o||{});
   Ps.eod=seq('eod',trip('eod',P(1,0),P(1,1),[at(1,.17,-S-11,5),at(1,.84,-S-11,5)]));
   const z1=-0.35*R,z2=0.35*R,xl=-S-7,xr=S+7;
@@ -1365,6 +1386,7 @@ const jetLbl=mkLabel('active','항공기 이륙 · 운용 재개');
 const crewLbl=mkLabel('',str(crewGrp('measure').label,'측정 요원'));
 const sigLbl=mkLabel('',str(crewGrp('signal').label,'신호수'));
 const finLbl=mkLabel('',str(crewGrp('finish').label,'마감 요원'));
+const cusLbl=mkLabel('','');
 const zoneLbl=mkLabel('zone','장비 대기 지역');
 const DL={dia:mkLabel('dim d-amber',''),depth:mkLabel('dim d-cyan',''),up:mkLabel('dim d-white',''),sq:mkLabel('dim d-white','')};
 const v3=new THREE.Vector3();
@@ -1752,13 +1774,14 @@ function rearDust(e,k,rate,dt,col){if(Math.random()>rate*dt)return;const back=k=
   const x=e.g.position.x+Math.cos(a)*back*s,z=e.g.position.z-Math.sin(a)*back*s;emit(x,0.3,z,{s0:0.8,s1:3.4,life:2.6,a:0.28,col:col||[0.6,0.54,0.45],spread:2,jit:0.8})}
 const DUST=num((CFG.anim||{}).dust,1,0,3),CAM_ROT=num((CFG.anim||{}).camRotate,0.035,0,0.5),JET_ON=(CFG.anim||{}).jet!==false;
 function updateEquipment(dt){
-  const live=playing&&!scrubbing;const i=phaseAt(t);const {S}=SC;
+  const live=playing&&!scrubbing;const i=phaseAt(t);const {S}=SC;const CA=CUSTOM.find(p=>t>=p.s&&t<p.s+p.d)||null;
   EQ_ORDER.forEach(k=>{const e=EQ[k];const p=pose(e.path,t);e.pos=p;
     e.g.position.set(p.x,groundAt(p.x,p.z),p.z);e.g.rotation.y=p.a;e.work=0;
     const pr=e.prev;let dist=0;if(pr){dist=Math.hypot(p.x-pr.x,p.z-pr.z);if(dist>8)dist=0}e.prev={x:p.x,z:p.z};
     e.spd=dt>0?lerp(e.spd,dist/dt,0.2):0;
     if(dist>0)e.wheels.forEach(w=>{w.m.rotation.z-=dist/w.r*(p.rv?-1:1)});
-    if(live&&e.spd>0.6&&Math.abs(p.x)<S+12&&Math.abs(p.z)<S+12&&biOf(i)>=2&&biOf(i)<=6&&k!=='saw')rearDust(e,k,8*DUST,dt)});
+    if(live&&e.spd>0.6&&Math.abs(p.x)<S+12&&Math.abs(p.z)<S+12&&((biOf(i)>=2&&biOf(i)<=6&&k!=='saw')||(CA&&CA.anim.dust&&CA.anim.acts.some(a=>a.k===k))))rearDust(e,k,8*DUST,dt);
+    if(CA&&p.mv&&CA.anim.acts.some(a=>a.k===k)&&Math.abs(p.x)<S+12&&Math.abs(p.z)<S+12)e.work=0.5});
   EQ_ORDER.forEach(k=>{if(EQ[k].off)EQ[k].g.visible=false});
   // loader arm
   {const e=EQ.loader;const p=e.pos;const tgt=p.mv?(p.rv?0.25:-0.44):-0.1;e.armCur+=(tgt-e.armCur)*Math.min(1,dt*3+(scrubbing?1:0));e.arm.rotation.z=e.armCur;e.bucket.rotation.z=-e.armCur*0.9+(p.rv?0.35:0);
@@ -1793,6 +1816,17 @@ function updateEquipment(dt){
     e.beacon.visible=on?(Math.floor(performance.now()/350)%2===0):false}
   // painter spray
   {const e=EQ.painter;const u=phU(10,t);e.spray.visible=u>.1&&u<.45;if(e.spray.visible)e.work=0.3}
+  // custom-phase crew
+  {const cr=CA?CA.anim.crew:null;const n=cr?cr.count:0;const u=CA?clamp((t-CA.s)/CA.d,0,1):0;const vis=n>0&&u>.06&&u<.94;
+    if(cr&&cusLbl.textContent!==cr.label)cusLbl.textContent=cr.label;
+    crewCustom.forEach((c,ci)=>{const on=vis&&ci<n;c.g.visible=on;if(!on){c.p=null;return}
+      if(cr.vest&&c._vest!==cr.vest){c._vest=cr.vest;c.vest.color.copy(C(hexOf(cr.vest,0xf0782a)))}
+      let x,z,a,pose='walk';const k=sm((u-.06)/.88);
+      if(cr.pattern==='patrol'){const rr=SC.upR+1+Math.floor(ci/2)*1.1;const th=PI+(ci%2?1:-1)*PI*0.9*k+ci*0.4;x=Math.cos(th)*rr;z=Math.sin(th)*rr;const th2=th+(ci%2?1:-1)*0.1;a=Math.atan2(-(Math.sin(th2)*rr-z),Math.cos(th2)*rr-x)}
+      else if(cr.pattern==='line'){const sp=Math.min(1.6,(2*S+2)/Math.max(1,n));z=(ci-(n-1)/2)*sp;x=lerp(-S-3,S+3,k);a=0}
+      else{const th=ci/n*PI*2+PI*0.25;const rr=S+1.6;x=Math.cos(th)*rr;z=Math.sin(th)*rr;a=Math.atan2(z,-x);pose='hold'}
+      const d=c.p?Math.hypot(x-c.p.x,z-c.p.z):0;c.p={x,z};animFigure(c,pose==='walk'&&d<2?d*CREW_WALK:0,pose==='walk'&&d>0.001?'walk':pose);
+      c.g.position.set(x,groundAt(x,z),z);c.g.rotation.y=a})}
   // measuring crew (phase 1)
   {const u=phU(1,t);const {upR}=SC;const rr0=upR+1.0;const base={x:-SC.S-9.5,z:3};
     crewMeasure.forEach((c,ci)=>{const vis=u>.18&&u<.84;c.g.visible=vis;if(!vis){c.p=null;return}let x,z,a;const span=(ci%2?1:-1)*PI*0.9;const rr=rr0+Math.floor(ci/2)*1.1;
@@ -1852,7 +1886,7 @@ function updateLabels(){const i=phaseAt(t);const act=PH[i].equip;
     const parked=Math.abs(e.pos.z-e.park.z)<0.5&&Math.abs(e.pos.x-e.park.x)<0.5;
     place(e.lbl,e.g.position.x,e.g.position.y+(k==='saw'||k==='painter'?2.2:4.4),e.g.position.z,show&&(reveal===k||!parked||isSel||isAct||camera.position.distanceTo(e.g.position)<70))});
   place(jetLbl,jet.g.position.x,jet.g.position.y+5,0,showLabels&&jet.g.visible);
-  {const lb=(el,c)=>place(el,c?c.g.position.x:0,2.4*CREW_H,c?c.g.position.z:0,!!c&&showLabels&&c.g.visible);lb(crewLbl,crewMeasure[0]);lb(sigLbl,crewSignal);lb(finLbl,crewFinish[0])}
+  {const lb=(el,c)=>place(el,c?c.g.position.x:0,2.4*CREW_H,c?c.g.position.z:0,!!c&&showLabels&&c.g.visible);lb(crewLbl,crewMeasure[0]);lb(sigLbl,crewSignal);lb(finLbl,crewFinish[0]);lb(cusLbl,crewCustom[0])}
   place(zoneLbl,-4,0.2,47,showLabels||mode==='quiz');
   if(selected){const p=EQ[selected].g.position;selRing.visible=true;selRing.position.set(p.x,p.y+0.06,p.z);const s=selected==='saw'||selected==='painter'?0.45:1;selRing.scale.setScalar(s);selRing.rotation.z+=0.01;
     selRing.material.color.copy(mode==='quiz'&&QZ===null&&reveal===null?C(0xf0b429):(QZ&&QZ.answered&&selected!==reveal)?C(0xe8705e):C(0xf0b429))}else selRing.visible=false;
@@ -1899,10 +1933,10 @@ window.addEventListener('message',e=>{const d=e.data;if(!d||typeof d!=='object')
 setScenario(DEF_SIZE);resize();setPlay(true);
 // deep links from the landing page: ?size=small|medium|large &phase=0-10 &mode=learn|quiz|ai &quiz=general|english|find
 {const q=new URLSearchParams(location.search);const sz=q.get('size');if(SIZES[sz]&&sz!==DEF_SIZE)setScenario(sz);
-  const ph=parseInt(q.get('phase'),10);if(ph>=0&&ph<PH.length)jump(ph);
+  const ph=parseInt(q.get('phase'),10);const pu=parseFloat(q.get('pu'));if(ph>=0&&ph<PH.length)jump(ph,pu>0&&pu<1?pu:undefined);
   const m=q.get('mode');if(m==='quiz'||m==='ai')setMode(m);const qs=q.get('quiz');if(m==='quiz'&&QSETS.some(s=>s.id===qs))startQuiz(qs)}
-let last=performance.now(),prevT=0,frames=0;
-function frame(now){const dt=Math.max(0,Math.min(0.1,(now-last)/1000));last=now;
+let last=-1,prevT=0,frames=0;
+function frame(now){if(last<0)last=now;const dt=Math.max(0,Math.min(0.1,(now-last)/1000));last=now;
   if(playing&&!scrubbing){t+=dt*speed;if(t>=TT){t=TT;setPlay(false);if(mode==='learn')toast('복구 완료 · 「평가」에서 배운 내용을 확인해 보세요')}}
   if(prevT<T_BLAST&&t>=T_BLAST&&playing&&!scrubbing&&t-prevT<0.5)sfx.boom(camera.position.length());prevT=t;
   computeState(t);
