@@ -148,6 +148,47 @@ code{font-family:var(--mono);font-size:12px;background:#0e1418;border:1px solid 
   .split{grid-template-columns:minmax(0,1fr)}
 }
 @media (max-width:560px){header .brand span{display:none}}
+.pvclose{display:none}
+/* 휴대폰: 상단은 제목·상태만, 주요 버튼은 하단 고정, 미리보기는 전체 화면, 표는 카드형으로 */
+@media (max-width:700px){
+  input[type=text],input[type=number],select,textarea{font-size:16px} /* iOS 확대 방지 */
+  header{gap:8px;padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top,0px))}
+  header .sp{display:none}
+  header .hgrp.acts{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel);border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:1fr 1fr;gap:6px;box-shadow:0 -8px 24px rgba(0,0,0,.35)}
+  header .hgrp.acts button{padding:11px 6px;white-space:normal;line-height:1.25}
+  main{padding:14px 16px calc(150px + env(safe-area-inset-bottom,0px))}
+  nav button{padding:10px 12px}
+  aside{position:fixed;inset:0;z-index:45;height:auto;border:0;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .pvbar{padding:8px 12px}
+  .pvbar select{max-width:none;flex:1 1 40%;font-size:14px}
+  .pvclose{display:inline-block;margin-left:auto}
+  button.ic{width:38px;height:38px;font-size:15px}
+  button.sm{padding:8px 10px;font-size:13px}
+  .card{padding:12px}
+  .grid,.grid.wide{grid-template-columns:minmax(0,1fr)}
+  .tbl.stack thead{display:none}
+  .tbl.stack tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 10px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .tbl.stack td{border:0;padding:0;display:flex;flex-direction:column;gap:4px;min-width:0;text-align:left}
+  .tbl.stack td.num{text-align:left;align-items:flex-start}
+  .tbl.stack td[data-l]::before{content:attr(data-l);font-size:11.5px;color:var(--muted);font-family:var(--sans)}
+  .tbl.stack td.wide{grid-column:1/-1}
+  .tbl.stack td.wide .row{justify-content:flex-end}
+  .tbl.stack input[type=number],.tbl.stack input[type=text]{width:100%!important}
+  .tbl.stack td:first-child:has(input[type=radio]){flex-direction:row;align-items:center;gap:8px}
+  .phi{grid-template-columns:auto 30px minmax(0,1fr) auto;padding:8px}
+  .phi .tag{display:none}
+  .phi .t small{display:block;margin:2px 0 0}
+  .qi .row{flex-wrap:wrap!important}
+  .qi .row>input{flex:1 1 100%}
+  .qi .row>input[aria-label="질문"]{order:5}
+  .qi .row>input[aria-label="분류"]{flex:1 1 auto;width:auto!important}
+  .tbl.stack td[data-l="비고"],.tbl.stack td[data-l="값"]{grid-column:1/-1}
+  .qi .opts{grid-template-columns:minmax(0,1fr)}
+  .split{gap:10px}
+  .list button{padding:10px}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #toasts{bottom:calc(140px + env(safe-area-inset-bottom,0px))}
+}
 </style>
 </head>
 <body>
@@ -160,7 +201,7 @@ code{font-family:var(--mono);font-size:12px;background:#0e1418;border:1px solid 
       <button class="sm" id="redo" title="다시 실행 (Ctrl+Shift+Z)">다시</button>
     </div>
     <div class="sp"></div>
-    <div class="hgrp">
+    <div class="hgrp acts">
       <button id="hApply" title="이 브라우저에서 시뮬레이터를 열면 수정한 설정으로 동작합니다">이 브라우저에 적용</button>
       <button id="hOpen" title="수정한 설정으로 완성된 시뮬레이터를 새 탭에서 실행">새 탭에서 실행</button>
       <button class="pri" id="hExport" title="수정한 설정이 들어간 완성 시뮬레이터 파일(.html)을 내려받습니다">완성 시뮬레이터 내보내기</button>
@@ -176,6 +217,7 @@ code{font-family:var(--mono);font-size:12px;background:#0e1418;border:1px solid 
       <select id="pvPhase" aria-label="미리보기 단계"></select>
       <button class="sm" id="pvReload" title="수정 내용을 3D에 반영 (Ctrl+Enter)">반영</button>
       <label class="chk" title="수정하면 잠시 뒤 자동으로 미리보기를 새로 그립니다"><input type="checkbox" id="pvAuto" checked>자동</label>
+      <button class="sm pvclose" id="pvClose">닫기</button>
     </div>
     <div id="pvWrap"><iframe id="pv" title="시뮬레이터 미리보기"></iframe><div id="pvMsg">준비 중…</div></div>
   </aside>
@@ -291,8 +333,13 @@ const TABS=[
  ['overview','개요','00'],['sizes','크레이터 규모','01'],['method','공법','02'],['phases','작업 순서 · 단계','03'],['equipment','장비','04'],
  ['crew','인원','05'],['anim','애니메이션 · 환경','06'],['quiz','평가 문제','07'],['export','내보내기 · 배포','08']];
 function renderNav(){const nv=$('nav');nv.innerHTML='';TABS.forEach(([id,n,num])=>nv.appendChild(h('button',{class:tab===id?'cur':'',onclick:()=>{tab=id;store.set('radr.editor.tab',id);$('main').innerHTML='';render();$('main').scrollTop=0}},h('i',{text:num}),n)));
+  const cur=nv.querySelector('.cur');if(cur&&narrow())requestAnimationFrame(()=>{nv.scrollLeft=cur.offsetLeft-nv.clientWidth/2+cur.offsetWidth/2});
   nv.appendChild(h('div',{class:'navnote'},'수정 내용은 자동 저장됩니다(이 브라우저). 다른 사람에게 배포하려면 「내보내기 · 배포」를 쓰세요.'))}
-function render(){renderNav();const m=$('main');const st=m.scrollTop,ws=window.scrollY;m.innerHTML='';(VIEWS[tab]||VIEWS.overview)(m);m.scrollTop=st;if(window.scrollY!==ws)window.scrollTo(0,ws);updateStatus();refreshPvSelects()}
+// 휴대폰에서 표를 카드형으로: 머리글을 각 칸의 라벨로 복사
+function stackify(t){if(!t||!t.tHead)return;const hs=[...t.tHead.rows[0].cells].map(c=>c.textContent.trim());t.classList.add('stack');
+  [...t.tBodies[0].rows].forEach(tr=>[...tr.cells].forEach((td,i)=>{if(hs[i])td.setAttribute('data-l',hs[i]);else td.classList.add('wide')}))}
+const narrow=()=>window.innerWidth<=1100;
+function render(){renderNav();const m=$('main');const st=m.scrollTop,ws=window.scrollY;m.innerHTML='';(VIEWS[tab]||VIEWS.overview)(m);m.querySelectorAll('table.tbl').forEach(stackify);m.scrollTop=st;if(window.scrollY!==ws)window.scrollTo(0,ws);updateStatus();refreshPvSelects()}
 let refreshSide=()=>{};
 
 const VIEWS={};
@@ -361,7 +408,7 @@ VIEWS.phases=m=>{
   let vi=0;
   cfg.phases.forEach((p,i)=>{const on=p.on!==false;const num=on?String(vi++).padStart(2,'0'):'--';const builtin=PH_IDS.includes(p.id);
     const tg=h('input',{type:'checkbox',checked:on,title:'사용',onclick:e=>e.stopPropagation(),onchange:e=>{p.on=e.target.checked;changed(true)}});
-    const it=h('div',{class:'phi'+(i===selPhase?' sel':'')+(on?'':' off'),draggable:'true',onclick:()=>{selPhase=i;render();if(on)pvJump(visPhases().indexOf(p))}},
+    const it=h('div',{class:'phi'+(i===selPhase?' sel':'')+(on?'':' off'),draggable:'true',onclick:()=>{selPhase=i;render();if(on)pvJump(visPhases().indexOf(p));if(narrow()){const d=$('phDetail');if(d)d.scrollIntoView({block:'start',behavior:'smooth'})}}},
       tg,h('span',{class:'n',text:num}),h('span',{class:'t'},p.title||'(이름 없음)',h('small',{text:`${p.real}분 · ${p.dur}초 · ${p.crew||0}명`})),
       builtin?h('span',{class:'tag a',text:'3D'}):h('span',{class:'tag c',text:(p.anim&&((p.anim.acts||[]).length||(p.anim.crew&&p.anim.crew.count>0)))?'사용자 · 장면':'사용자'}),
       h('span',{class:'mv'},h('button',{class:'ic',title:'위로','aria-label':'위로',onclick:e=>{e.stopPropagation();if(moveArr(cfg.phases,i,i-1)){selPhase=i-1;changed(true)}}},'↑'),
@@ -382,14 +429,15 @@ VIEWS.phases=m=>{
     stepsBox.appendChild(h('div',null,h('button',{class:'sm',onclick:()=>{(p.steps=p.steps||[]).push('');drawSteps();changed(false);const l=stepsBox.querySelectorAll('input');l[l.length-1].focus()}},'+ 세부 작업 추가')))};drawSteps();
   const eqBox=h('div',{class:'eqchips'});cfg.equipment.order.forEach(k=>{const e=cfg.equipment.items[k];const c=h('input',{type:'checkbox',checked:(p.equip||[]).includes(k)});
     c.onchange=()=>{p.equip=cfg.equipment.order.filter(x=>x===k?c.checked:(p.equip||[]).includes(x));changed(false)};eqBox.appendChild(h('label',{class:e.on===false?'dis':'',title:e.on===false?'사용 안 함 장비':''},c,h('span',{class:'sw',style:`background:${e.color}`}),e.short))});
-  m.append(card(`단계 편집 · ${p.title||''}`,builtin?`3D 장면: ${BUILTIN_NAME[p.id]} (${p.id})`:'사용자 정의 단계 · 장면은 아래에서 구성',
+  const det=card(`단계 편집 · ${p.title||''}`,builtin?`3D 장면: ${BUILTIN_NAME[p.id]} (${p.id})`:'사용자 정의 단계 · 장면은 아래에서 구성',
     h('div',{class:'grid wide'},textF('단계 이름','phases.'+selPhase+'.title',{structural:true}),textF('영문 이름',base+'.en'),textF('진행 표시 이름',base+'.m',{hint:'예: 절단 길이'})),
     h('div',{class:'grid'},numF('실제 소요 시간',base+'.real',{min:0,max:600,step:1,unit:'분'}),numF('애니메이션 길이',base+'.dur',{min:4,max:120,step:1,unit:'초'}),numF('투입 인원',base+'.crew',{min:0,max:999,step:1,int:true,unit:'명'})),
     textF('목표 (설명)',base+'.goal',{area:true,rows:3,full:true}),
     h('div',{class:'f'},h('span',{text:'세부 작업 순서'}),stepsBox),
     h('div',{class:'f'},h('span',{text:'투입 장비 (브리핑 표시 · 자동 카메라 대상)'}),eqBox),
     h('div',{class:'row'},h('button',{disabled:p.on===false,onclick:()=>pvJump(visPhases().indexOf(p))},'미리보기에서 이 단계 보기'),
-      builtin?h('span',{class:'note',text:'3D 단계는 삭제 대신 체크를 꺼서 숨깁니다.'}):h('button',{class:'danger',onclick:async()=>{if(!await confirmDlg(`「${p.title}」 단계를 삭제할까요?`))return;cfg.phases.splice(selPhase,1);selPhase=Math.max(0,selPhase-1);changed(true)}},'이 단계 삭제'))));
+      builtin?h('span',{class:'note',text:'3D 단계는 삭제 대신 체크를 꺼서 숨깁니다.'}):h('button',{class:'danger',onclick:async()=>{if(!await confirmDlg(`「${p.title}」 단계를 삭제할까요?`))return;cfg.phases.splice(selPhase,1);selPhase=Math.max(0,selPhase-1);changed(true)}},'이 단계 삭제')));
+  det.id='phDetail';m.append(det);
   if(!builtin)m.append(animBuilder(p,base));
 };
 // 사용자 정의 단계 애니메이션 구성
@@ -422,13 +470,13 @@ function animBuilder(p,base){
 VIEWS.equipment=m=>{
   m.append(h('h2',{text:'장비'}),h('p',{class:'lead',text:'장비별 이름·역할·제원표와 3D 모델 색상·크기, 엔진 소리 높이를 바꿉니다. 「사용」을 끄면 3D 현장·평가·AI 답변에서 빠집니다.'}));
   const items=cfg.equipment.items;if(!items[selEq])selEq=cfg.equipment.order[0];
-  const lst=h('div',{class:'list'});cfg.equipment.order.forEach(k=>{const e=items[k];lst.appendChild(h('button',{class:k===selEq?'sel':'',onclick:()=>{selEq=k;render();pvSel(k)}},h('span',{class:'sw',style:`background:${e.color}`}),h('span',{class:'t',text:e.name}),e.on===false?h('span',{class:'tag off',text:'끔'}):null))});
+  const lst=h('div',{class:'list'});cfg.equipment.order.forEach(k=>{const e=items[k];lst.appendChild(h('button',{class:k===selEq?'sel':'',onclick:()=>{selEq=k;render();pvSel(k);if(narrow()){const d=$('eqDetail');if(d)d.scrollIntoView({block:'start',behavior:'smooth'})}}},h('span',{class:'sw',style:`background:${e.color}`}),h('span',{class:'t',text:e.name}),e.on===false?h('span',{class:'tag off',text:'끔'}):null))});
   const e=items[selEq];const base='equipment.items.'+selEq;
-  const specB=h('tbody');const drawSpecs=()=>{specB.innerHTML='';(e.specs||[]).forEach((r,j)=>{const a=h('input',{type:'text',value:r[0],'aria-label':'항목'}),b=h('input',{type:'text',value:r[1],'aria-label':'값'});a.oninput=()=>{r[0]=a.value;changed(false)};b.oninput=()=>{r[1]=b.value;changed(false)};
+  const specB=h('tbody');const drawSpecs=()=>{specB.innerHTML='';setTimeout(()=>stackify(specB.parentNode),0);(e.specs||[]).forEach((r,j)=>{const a=h('input',{type:'text',value:r[0],'aria-label':'항목'}),b=h('input',{type:'text',value:r[1],'aria-label':'값'});a.oninput=()=>{r[0]=a.value;changed(false)};b.oninput=()=>{r[1]=b.value;changed(false)};
     specB.appendChild(h('tr',null,h('td',null,a),h('td',null,b),h('td',null,h('div',{class:'row',style:'flex-wrap:nowrap'},h('button',{class:'ic',onclick:()=>{if(moveArr(e.specs,j,j-1)){drawSpecs();changed(false)}}},'↑'),h('button',{class:'ic',onclick:()=>{if(moveArr(e.specs,j,j+1)){drawSpecs();changed(false)}}},'↓'),h('button',{class:'ic danger',onclick:()=>{e.specs.splice(j,1);drawSpecs();changed(false)}},'✕')))))})};drawSpecs();
   const defE=DEF.equipment.items[selEq];
   const usedIn=cfg.phases.filter(p=>(p.equip||[]).includes(selEq)).map(p=>p.title).join(', ')||'없음';
-  m.append(h('div',{class:'split'},h('div',null,lst),h('div',null,
+  m.append(h('div',{class:'split'},h('div',null,lst),h('div',{id:'eqDetail',style:'scroll-margin-top:12px'},
     card(e.name,`투입 단계: ${usedIn}`,h('div',{class:'row'},chkF('이 장비 사용','equipment.items.'+selEq+'.on',{structural:true}),h('button',{class:'sm',onclick:()=>pvSel(selEq)},'미리보기에서 보기'))),
     card('이름 · 역할',null,h('div',{class:'grid wide'},textF('정식 이름',base+'.name',{structural:true}),textF('짧은 이름 (3D 이름표)',base+'.short'),textF('영문 이름',base+'.en'),textF('역할 설명',base+'.role',{area:true,full:true,rows:2}))),
     card('3D 모델',null,h('div',{class:'grid'},colorF('차체 색상',base+'.color',defE.color),rangeF('크기 배율',base+'.scale',{min:0.5,max:2,step:0.05,d:2,unit:'×'}),rangeF('엔진 소리 높이',base+'.sound',{min:20,max:200,step:1,unit:' Hz'}))),
@@ -540,6 +588,7 @@ $('pvPhase').onchange=e=>pvJump(+e.target.value);
 $('pvSize').onchange=e=>{pvSize=e.target.value;post({type:'radr-size',size:pvSize})};
 $('pvReload').onclick=()=>{clearTimeout(pvT);pvLoad()};
 $('pvAuto').onchange=e=>{if(e.target.checked)pvLoad()};
+$('pvClose').onclick=()=>$('hPv').click();
 $('hPv').onclick=()=>{const app=$('app');const off=!app.classList.toggle('nopv');$('hPv').classList.toggle('on',off);if(off&&!pv.src.includes('/sim/'))pvLoad();else if(off)pvLoad()};
 // 좁은 화면에서는 미리보기를 처음에 끈 상태로 (3D 렌더링 부담)
 if(window.innerWidth<700){$('app').classList.add('nopv');$('hPv').classList.remove('on')}
