@@ -484,6 +484,10 @@ const MTH=(()=>{const m=CFG.method||{};const slab=num(m.slab,0.45,0.15,1.2);
   return {name:str(m.name,'급속경화 콘크리트 캡 공법'),capMaterial:str(m.capMaterial,'급속경화 콘크리트'),fillMaterial:str(m.fillMaterial,'쇄석 골재'),
     slab,cap:Math.min(num(m.cap,0.30,0.05,1),slab-0.05),upFactor:num(m.upFactor,1.6,1.05,3),cutMargin:num(m.cutMargin,0.4,0,2),passes:Math.round(num(m.passes,3,1,12))}})();
 const S_MAX=RADR_SCN.S_MAX;
+// 현장 배치 (data.js site): 활주로 크기, 장비 대기 지역(대기 칸 x·z·간격·방향, 이동로 z). 좌표는 크레이터 중심 기준 m
+const SITE=(()=>{const s=CFG.site||{},rw=s.runway||{},st=s.staging||{};
+  return {rwLen:num(rw.length,900,400,4000),rwWidth:num(rw.width,45,41,150),
+    stX:num(st.x,-40,-2000,2000),stZ:num(st.z,40,10,400),stGap:num(st.spacing,9,4,40),stHeading:num(st.heading,90,-360,360),lane:num(st.lane,28,16,400)}})();
 const SIZES={};
 Object.entries(CFG.sizes||{}).forEach(([k,v])=>{if(!/^[a-z0-9_-]+$/i.test(k)||!v)return;
   const maxR=(S_MAX-0.5-MTH.cutMargin)/MTH.upFactor;const dia=Math.min(num(v.dia,7.5,1,32),maxR*2);
@@ -551,7 +555,9 @@ const EQ={};
 EQ_ORDER.forEach(k=>{const v=((CFG.equipment||{}).items||{})[k]||{};
   EQ[k]={name:str(v.name,k),short:str(v.short,str(v.name,k)),en:str(v.en,''),role:String(v.role||''),specs:(Array.isArray(v.specs)?v.specs:[]).filter(r=>Array.isArray(r)&&r.length>=2).map(r=>[String(r[0]),String(r[1])]),
     off:v.on===false,color:v.color,scale:num(v.scale,1,0.3,3),sound:num(v.sound,50,20,400)}});
-EQ_ORDER.forEach((k,i)=>{EQ[k].park={x:-40+i*9,z:40,a:PI/2}});
+EQ_ORDER.forEach((k,i)=>{EQ[k].park={x:SITE.stX+i*SITE.stGap,z:SITE.stZ,a:SITE.stHeading/90*(PI/2)}});
+const ST_X1=SITE.stX+(EQ_ORDER.length-1)*SITE.stGap; // 마지막 대기 칸 x
+const ST_CX=SITE.stX+(EQ_ORDER.length-1)/2*SITE.stGap; // 대기 지역 가운데 x
 const EQ_ON=EQ_ORDER.filter(k=>!EQ[k].off);
 ALL.forEach(p=>{if(p.anim){p.anim.acts=p.anim.acts.filter(a=>!EQ[a.k].off);p.anim.acts.forEach(a=>{if(!p.equip.includes(a.k))p.equip.push(a.k)})}});
 PH.forEach(p=>{p.equip=p.equip.filter(k=>!EQ[k].off)});
@@ -743,14 +749,14 @@ function wheel(g,r,w,x,y,z,list){const wg=new THREE.Group();wg.position.set(x,y,
   if(list)list.push({m:wg,r});return wg}
 
 // ---------- ground & runway ----------
-const RW_HALF=22.5, PATCH=20, RES=0.25, N=Math.round(PATCH*2/RES)+1, RW_LEN=900;
+const RW_HALF=SITE.rwWidth/2, PATCH=20, RES=0.25, N=Math.round(PATCH*2/RES)+1, RW_LEN=SITE.rwLen;
 // world-space shading shared by every concrete surface, so the repair patch is seamless with the runway
 const GU={tSoil:{value:TEX.soil},tSoilN:{value:TEX.soilN},tGravel:{value:TEX.gravel},tGravelN:{value:TEX.gravelN},tFresh:{value:TEX.fresh},tFreshN:{value:TEX.freshN},
-  tMacro:{value:TEX.macro},tDamage:{value:null},uBlast:{value:0},uS:{value:5},uCut:{value:0},uConcX:{value:-99},uConcOn:{value:0},uMarkX:{value:-999},uUpR:{value:6},uPatch:{value:PATCH},uRWH:{value:RW_HALF}};
+  tMacro:{value:TEX.macro},tDamage:{value:null},uBlast:{value:0},uS:{value:5},uCut:{value:0},uConcX:{value:-99},uConcOn:{value:0},uMarkX:{value:-999},uUpR:{value:6},uPatch:{value:PATCH},uRWH:{value:RW_HALF},uRWL:{value:RW_LEN/2}};
 const G_DECL=`
 varying vec4 vW;varying vec2 vX;
 uniform sampler2D tSoil,tSoilN,tGravel,tGravelN,tFresh,tFreshN,tMacro,tDamage;
-uniform float uBlast,uS,uCut,uConcX,uConcOn,uMarkX,uUpR,uPatch,uRWH;`;
+uniform float uBlast,uS,uCut,uConcX,uConcOn,uMarkX,uUpR,uPatch,uRWH,uRWL;`;
 const G_MAP=`
 vec2 gWP=vec2(vUv.x*10.0,vUv.y*10.0+2.5);
 vec4 texelColor=texture2D(map,vUv)*vW.x+texture2D(tSoil,gWP*0.25)*vW.y+texture2D(tGravel,gWP*0.5)*vW.z+texture2D(tFresh,gWP*0.25)*vW.w;
@@ -761,7 +767,7 @@ diffuseColor.rgb*=0.86+0.2*gM+0.1*gM2;
 vec2 gA=abs(gWP);
 float gAA=max(fwidth(gWP.x),fwidth(gWP.y));
 // rubber deposits along the touchdown zones
-float tdz=smoothstep(130.0,180.0,gA.x)*(1.0-smoothstep(330.0,420.0,gA.x));
+float tdz=smoothstep(uRWL-320.0,uRWL-270.0,gA.x)*(1.0-smoothstep(uRWL-120.0,uRWL-30.0,gA.x));
 diffuseColor.rgb*=1.0-tdz*vW.x*0.5*smoothstep(0.35,0.75,gM3)*(1.0-smoothstep(4.0,13.0,gA.y));
 if(gA.x<uPatch&&gA.y<uPatch){
   vec4 dm=texture2D(tDamage,(gWP+uPatch)/(2.0*uPatch));
@@ -774,8 +780,8 @@ if(gA.x<uPatch&&gA.y<uPatch){
 }
 float gPaint=0.0;
 {
-  float cl=(1.0-smoothstep(0.45-gAA,0.45+gAA,gA.y))*step(mod(gWP.x+1000.0,50.0),30.0)*step(gA.x,400.0);
-  float el=(1.0-smoothstep(0.45-gAA,0.45+gAA,abs(gA.y-(uRWH-0.75))))*step(gA.x,450.0)*step(gA.y,uRWH);
+  float cl=(1.0-smoothstep(0.45-gAA,0.45+gAA,gA.y))*step(mod(gWP.x+1000.0,50.0),30.0)*step(gA.x,uRWL-50.0);
+  float el=(1.0-smoothstep(0.45-gAA,0.45+gAA,abs(gA.y-(uRWH-0.75))))*step(gA.x,uRWL)*step(gA.y,uRWH);
   float orig=vW.x*vX.y*(1.0-uBlast*step(length(gWP),uUpR*1.05));
   float fresh=vW.w*step(gWP.x,uMarkX);
   gPaint=clamp((cl*(orig+fresh)+el*vW.x)*(0.72+0.3*gM2+0.15*gM3),0.0,1.0);
@@ -800,7 +806,7 @@ function concPiece(x0,x1,z0,z1,y){const geo=new THREE.PlaneGeometry(x1-x0,z1-z0)
 concPiece(-RW_LEN/2,-PATCH,-RW_HALF,RW_HALF);concPiece(PATCH,RW_LEN/2,-RW_HALF,RW_HALF);
 concPiece(-PATCH,PATCH,PATCH,RW_HALF);concPiece(-PATCH,PATCH,-RW_HALF,-PATCH);
 // staging apron + taxiway to the shelters
-concPiece(-52,44,28.5,50,-0.015);concPiece(-30,-10,50,192,-0.015);concPiece(-160,140,192,214,-0.015);
+concPiece(SITE.stX-12,ST_X1+12,SITE.lane+0.5,SITE.stZ+10,-0.015);concPiece(-30,-10,50,192,-0.015);concPiece(-160,140,192,214,-0.015);
 // world-uv textured flats with large-scale colour variation (hides tiling)
 function macroMat(map,nmap,tile,amt,o,extra){const m=new THREE.MeshStandardMaterial(Object.assign({map,normalMap:nmap,roughness:.95,metalness:0,envMapIntensity:.45},o||{}));
   m.onBeforeCompile=sh=>{sh.uniforms.tMacro={value:TEX.macro};sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nuniform sampler2D tMacro;')
@@ -820,7 +826,7 @@ function paintRect(x,z,w,d,mat){const geo=new THREE.PlaneGeometry(w,d);geo.rotat
 [-1,1].forEach(s=>{for(let i=0;i<12;i++){const z=(i<6?-1:1)*(2.6+(i%6)*3.3);paintRect(s*(RW_LEN/2-26),z,30,1.8)}
   [150,300].forEach((d,j)=>{[-1,1].forEach(zs=>{for(let k=0;k<(j?2:3);k++)paintRect(s*(RW_LEN/2-d-k*0),zs*(6+k*2.4),22.5,1.6)})});
   [-1,1].forEach(zs=>paintRect(s*(RW_LEN/2-210),zs*8.5,45,7))});
-for(let i=0;i<=EQ_ORDER.length;i++)paintRect(-44.5+i*9,40.5,0.15,12,YPAINT);
+for(let i=0;i<=EQ_ORDER.length;i++)paintRect(SITE.stX-SITE.stGap/2+i*SITE.stGap,SITE.stZ+0.5,0.15,12,YPAINT);
 paintRect(-20,121,0.3,142,YPAINT);paintRect(-10,203,300,0.3,YPAINT);
 // edge lights (instanced)
 {const xs=[];for(let x=-RW_LEN/2;x<=RW_LEN/2;x+=60)xs.push(x);const n=xs.length*2;
@@ -888,7 +894,7 @@ const SCN=new THREE.Group();scene.add(SCN);
   const tufts=new THREE.InstancedMesh(tg,new THREE.MeshStandardMaterial({map:TEX.grassTuft,alphaTest:.45,roughness:1,envMapIntensity:.4}),n);
   const r=mulberry32(77);const d=new THREE.Object3D();const col=new THREE.Color();let k=0;let guard=0;
   while(k<n&&guard++<n*6){const x=(r()-.5)*260,z=(r()<.5?1:-1)*(29.2+Math.pow(r(),1.6)*90);
-    if(z>28&&z<51&&x>-53&&x<45)continue;if(z>49&&x>-31&&x<-9)continue;
+    if(z>SITE.lane&&z<SITE.stZ+11&&x>SITE.stX-13&&x<ST_X1+13)continue;if(z>49&&x>-31&&x<-9)continue;
     d.position.set(x,-0.06,z);d.rotation.set(0,r()*PI,0);const s=0.6+r()*1.0;d.scale.set(s,s*(0.7+r()*0.7),s);d.updateMatrix();tufts.setMatrixAt(k,d.matrix);
     col.setRGB(0.75+r()*0.35,0.8+r()*0.3,0.6+r()*0.3);tufts.setColorAt(k,col);k++}
   tufts.count=k;tufts.receiveShadow=true;scene.add(tufts)}
@@ -1330,7 +1336,7 @@ function pose(path,t){
       const a=k0.mv?lerpAng(k0.ha,k0.hb,sm(u/0.2)):lerpAng(k0.ha,k0.hb,sm(u));
       return {x:lerp(k0.x,k1.x,e),z:lerp(k0.z,k1.z,e),a,mv:k0.mv,rv:k0.rv}}}
   const L=path[path.length-1];return {x:L.x,z:L.z,a:L.ha,mv:false,rv:false}}
-const LANE=28;
+const LANE=SITE.lane;
 function trip(k,t0,t1,work){const p=EQ[k].park;if(t1-t0<2.5)return [];return [{t:t0,x:p.x,z:p.z},{t:t0+1.0,x:p.x,z:LANE},...work,{t:t1-1.0,x:p.x,z:LANE},{t:t1,x:p.x,z:p.z,rev:true}]}
 function buildPaths(){
   const {R,S}=SC;const Ps={};
@@ -1631,7 +1637,7 @@ function showQ(){const q=QZ.list[QZ.i];QZ.answered=false;reveal=null;selected=nu
   $('qNum').textContent=`${QZ.i+1}/${QZ.list.length}`;$('qScore').textContent=QZ.score;$('qStreak').textContent=QZ.streak;$('qCat').textContent=q.c;
   $('qText').textContent=q.q;$('qFb').hidden=true;$('qFind').hidden=!q.find;const box=$('qOpts');box.innerHTML='';
   if(!q.find)q.opts.forEach((o,i)=>{const b=document.createElement('button');b.innerHTML=`<i>${i+1}</i><span></span>`;b.lastChild.textContent=o.o;b.onclick=()=>answer(i);box.appendChild(b)});
-  if(q.find){t=0.5;lastKey='';camTo(0,34,94,0,0,38)}
+  if(q.find){t=0.5;lastKey='';camTo(ST_CX+4,34,SITE.stZ+54,ST_CX+4,0,SITE.stZ-2)}
   else if(q.sc!==undefined&&A[q.sc]&&A[q.sc].on){t=P(q.sc,0.55);lastKey='';setAuto(true);camSnap=true}
   QZ.lim=q.find?30:25;QZ.qt=performance.now();$('quiz').scrollTop=0;kick()}
 function qTimer(){if(!QZ||QZ.answered||mode!=='quiz')return;const el=(performance.now()-QZ.qt)/1000;const left=QZ.lim-el;
@@ -1685,7 +1691,7 @@ function finishQuiz(){const z=QZ;const n=z.list.length,acc=z.correct/n,g=gradeOf
 function copyText(txt){const ok=()=>toast('결과를 복사했습니다');if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(txt).then(ok,()=>fallback());else fallback();
   function fallback(){const ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');ok()}catch(e){toast('복사하지 못했습니다')}ta.remove()}}
 function quizIntro(){QZ=null;reveal=null;selected=null;$('qIntro').hidden=false;$('qPlay').hidden=true;$('qQuit').hidden=true;$('qHead').textContent='평가';renderQSets();
-  showLabels=false;t=0.5;lastKey='';setPlay(false);camTo(-4,30,86,-4,0,30)}
+  showLabels=false;t=0.5;lastKey='';setPlay(false);camTo(ST_CX,30,SITE.stZ+46,ST_CX,0,SITE.stZ-10)}
 $('qQuit').onclick=()=>{quizIntro()};
 function openModal(html){$('modalBox').innerHTML=html;$('modal').hidden=false;$('modalBox').querySelectorAll('[data-mclose]').forEach(b=>b.onclick=closeModal);kick()}
 function closeModal(){$('modal').hidden=true;kick()}
@@ -1883,7 +1889,7 @@ function updateLabels(){const i=phaseAt(t);const act=PH[i].equip;
     place(e.lbl,e.g.position.x,e.g.position.y+(k==='saw'||k==='painter'?2.2:4.4),e.g.position.z,show&&(reveal===k||!parked||isSel||isAct||camera.position.distanceTo(e.g.position)<70))});
   place(jetLbl,jet.g.position.x,jet.g.position.y+5,0,showLabels&&jet.g.visible);
   {const lb=(el,c)=>place(el,c?c.g.position.x:0,2.4*CREW_H,c?c.g.position.z:0,!!c&&showLabels&&c.g.visible);lb(crewLbl,crewMeasure[0]);lb(sigLbl,crewSignal);lb(finLbl,crewFinish[0]);lb(cusLbl,crewCustom[0])}
-  place(zoneLbl,-4,0.2,47,showLabels||mode==='quiz');
+  place(zoneLbl,ST_CX,0.2,SITE.stZ+7,showLabels||mode==='quiz');
   if(selected){const p=EQ[selected].g.position;selRing.visible=true;selRing.position.set(p.x,p.y+0.06,p.z);const s=selected==='saw'||selected==='painter'?0.45:1;selRing.scale.setScalar(s);selRing.rotation.z+=0.01;
     selRing.material.color.copy(mode==='quiz'&&QZ===null&&reveal===null?C(0xf0b429):(QZ&&QZ.answered&&selected!==reveal)?C(0xe8705e):C(0xf0b429))}else selRing.visible=false;
 }

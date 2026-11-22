@@ -8,6 +8,19 @@ window.RADR_DATA = {
     "eyebrow": "RADR · 활주로 급속 피해복구",
     "note": "수치와 소요 시간은 교육용 예시값입니다. 실제 작업은 부대 교범과 기술지시서를 따릅니다."
   },
+  "site": {
+    "runway": {
+      "length": 900,
+      "width": 45
+    },
+    "staging": {
+      "x": -40,
+      "z": 40,
+      "spacing": 9,
+      "heading": 90,
+      "lane": 28
+    }
+  },
   "defaultSize": "medium",
   "sizes": {
     "small": {
