@@ -512,11 +512,15 @@ function parseAnim(a){a=a&&typeof a==='object'?a:{};const seen={};
     .map(x=>({k:x.k,pattern:ACT_PATTERNS.includes(x.pattern)?x.pattern:'pass',reps:Math.round(num(x.reps,2,1,6))}));
   const c=a.crew&&typeof a.crew==='object'?a.crew:{};
   return {acts,crew:{count:Math.round(num(c.count,0,0,8)),pattern:CREW_PATTERNS.includes(c.pattern)?c.pattern:'patrol',label:str(c.label,'작업 요원'),vest:c.vest},dust:a.dust!==false}}
+// 내장 단계의 장비 경로 {k, from, to, keys:[{u, x, z, rev, lin, a(°)}]}. 좌표는 m 또는 {S,R,m} = S×절단 반폭 + R×크레이터 반지름 + m (크레이터 중심 기준)
+const coordOk=v=>Number.isFinite(v)||(!!v&&typeof v==='object'&&['S','R','m'].every(k=>v[k]===undefined||Number.isFinite(v[k])));
+function parseTracks(a){return (Array.isArray(a)?a:[]).filter(t=>t&&EQ_KEYS.includes(t.k)&&Array.isArray(t.keys)).map(t=>({k:t.k,from:num(t.from,0,0,1),to:num(t.to,1,0,1),
+  keys:t.keys.filter(q=>q&&Number.isFinite(q.u)&&coordOk(q.x)&&coordOk(q.z)).map(q=>({u:clamp(q.u,0,1),x:q.x,z:q.z,rev:q.rev===true,lin:q.lin===true,a:Number.isFinite(q.a)?q.a:undefined}))}))}
 const ALL=[];
 (CFG.phases||[]).forEach(p=>{if(!p)return;const bi=PH_IDS.indexOf(p.id);if(bi>=0&&ALL.some(q=>q.bi===bi))return;
   ALL.push({id:bi>=0?p.id:String(p.id||'custom-'+ALL.length),bi:bi>=0?bi:-1,on:p.on!==false,title:str(p.title,'단계'),en:str(p.en,''),real:num(p.real,10,0,600),dur:num(p.dur,10,4,120),crew:Math.round(num(p.crew,0,0,999)),
-    goal:String(p.goal||''),steps:(Array.isArray(p.steps)?p.steps:[]).map(String).filter(Boolean),m:str(p.m,'진행'),equip:(Array.isArray(p.equip)?p.equip:[]).filter(k=>EQ_KEYS.includes(k)),anim:bi>=0?null:parseAnim(p.anim)})});
-PH_IDS.forEach((id,bi)=>{if(!ALL.some(q=>q.bi===bi))ALL.push({id,bi,on:false,title:id,en:'',real:0,dur:4,crew:0,goal:'',steps:[],m:'',equip:[]})});
+    goal:String(p.goal||''),steps:(Array.isArray(p.steps)?p.steps:[]).map(String).filter(Boolean),m:str(p.m,'진행'),equip:(Array.isArray(p.equip)?p.equip:[]).filter(k=>EQ_KEYS.includes(k)),tracks:bi>=0?parseTracks(p.tracks):[],anim:bi>=0?null:parseAnim(p.anim)})});
+PH_IDS.forEach((id,bi)=>{if(!ALL.some(q=>q.bi===bi))ALL.push({id,bi,on:false,title:id,en:'',real:0,dur:4,crew:0,goal:'',steps:[],m:'',equip:[],tracks:[]})});
 if(!ALL.some(p=>p.on))ALL.forEach(p=>p.on=true);
 const A=[];ALL.forEach(p=>{if(p.bi>=0)A[p.bi]=p});
 let TT=0,RT=0;ALL.forEach(p=>{p.d=p.on?p.dur:0.0001;p.s=TT;TT+=p.d;p.rs=RT;if(p.on)RT+=p.real});
@@ -1333,29 +1337,12 @@ function buildPaths(){
     else if(a.pattern==='cross'){const z=lane*S*0.9;for(let j=0;j<r;j++){const u0=0.1+0.8*j/r,u1=0.1+0.8*(j+0.9)/r;const [x0,x1]=j%2?[S+8,-S-8]:[-S-8,S+8];w.push(at(u0,x0,z),at(u1,x1,z,{lin:true}))}}
     else{const z=-S*0.5+ai*4.5;w.push(at(0.12,S+7,z),at(0.88,S+7,z))}
     (CX[k]=CX[k]||[]).push(trip(k,ph.s,ph.s+ph.d,w))})});
-  const seq=(k,...trips)=>start(k).concat(...trips.concat(CX[k]||[]).filter(a=>a.length).sort((a,b)=>a[0].t-b[0].t));
-  const at=(i,u,x,z,o)=>Object.assign({t:P(i,u),x,z},o||{});
-  Ps.eod=seq('eod',trip('eod',P(1,0),P(1,1),[at(1,.17,-S-11,5),at(1,.84,-S-11,5)]));
-  const z1=-0.35*R,z2=0.35*R,xl=-S-7,xr=S+7;
-  Ps.loader=seq('loader',trip('loader',P(2,0),P(2,1),[
-    at(2,.10,xl,z1),at(2,.16,-R-3.4,z1),at(2,.23,xl,z2,{rev:true}),at(2,.29,-R-3.4,z2),at(2,.36,xl,0,{rev:true}),
-    at(2,.42,xl,S+6),at(2,.48,xr,S+6),at(2,.54,xr,z1),at(2,.60,R+3.4,z1),at(2,.67,xr,z2,{rev:true}),at(2,.74,R+3.4,z2),at(2,.82,xr,0,{rev:true}),at(2,.86,xr,S+6)]),
-    trip('loader',P(5,.48),P(5,1),[
-    at(5,.54,-S-8,-S*0.4),at(5,.60,-S-4.4,-S*0.4),at(5,.66,-S-8,0,{rev:true}),at(5,.72,-S-4.4,0),at(5,.78,-S-8,S*0.4,{rev:true}),at(5,.84,-S-4.4,S*0.4),at(5,.9,-S-8,S*0.4,{rev:true})]));
-  const exZ=-(S+3.2),xA=-0.45*S,xB=0.45*S;
-  Ps.dump=seq('dump',
-    trip('dump',P(2,0),P(2,1),[at(2,.12,-S-12,-S-6),at(2,.88,-S-12,-S-6)]),
-    trip('dump',P(4,0),P(4,1),[at(4,.08,xA-6.5,exZ),at(4,.48,xA-6.5,exZ),at(4,.53,xB-6.5,exZ),at(4,.92,xB-6.5,exZ)]),
-    trip('dump',P(5,0),P(5,.56),[at(5,.08,-S-15,0),at(5,.15,-S-4.6,0,{rev:true}),at(5,.42,-S-4.6,0),at(5,.48,-S-12,-3)]));
-  Ps.saw=seq('saw',trip('saw',P(3,0),P(3,1),[at(3,.09,-S-1.5,-S),at(3,.12,-S,-S),at(3,.31,S,-S,{lin:true}),at(3,.50,S,S,{lin:true}),at(3,.69,-S,S,{lin:true}),at(3,.88,-S,-S,{lin:true}),at(3,.92,-S-2,-S-2)]));
-  Ps.excavator=seq('excavator',trip('excavator',P(4,0),P(4,1),[at(4,.06,xA,exZ),at(4,.08,xA,exZ,{a:-PI/2}),at(4,.47,xA,exZ),at(4,.49,xA,exZ,{a:0}),at(4,.52,xB,exZ),at(4,.54,xB,exZ,{a:-PI/2}),at(4,.92,xB,exZ)]));
-  Ps.roller=seq('roller',trip('roller',P(6,0),P(6,1),[at(6,.1,-S-4,-S*0.55),at(6,.28,S-2,-S*0.55),at(6,.42,-S-4,0,{rev:true}),at(6,.58,S-2,0),at(6,.72,-S-4,S*0.55,{rev:true}),at(6,.88,S-2,S*0.55),at(6,.92,S+3,S+3)]));
-  const mz=S+3.2;
-  Ps.mixer=seq('mixer',trip('mixer',P(7,0),P(7,1),[at(7,.09,-S+3,mz),at(7,.12,-S+3,mz,{a:0}),at(7,.88,S+3,mz,{lin:true}),at(7,.92,S+8,mz+2)]));
-  const rows=[-S*0.75-1,-S*0.25,S*0.25,S*0.75+1],xs=-S-8,xe=S+8;const sw=[];
-  rows.forEach((z,i)=>{const a=.08+i*.21,b=a+.17;const [p,q]=i%2?[xe,xs]:[xs,xe];sw.push(at(9,a,p,z),at(9,b,q,z,{lin:true}))});
-  Ps.sweeper=seq('sweeper',trip('sweeper',P(9,0),P(9,1),sw));
-  Ps.painter=seq('painter',trip('painter',P(10,0),P(10,.58),[at(10,.07,-S-6,0),at(10,.1,-S-3,0),at(10,.45,S+3,0,{lin:true}),at(10,.49,S+8,4)]));
+  // 내장 단계 경로(data.js phases[].tracks): 단계 번호 순으로 모은 뒤 사용자 정의 단계 움직임과 함께 시간순 정렬
+  const cv=v=>typeof v==='number'?v:(v.S?S*v.S:0)+(v.R?R*v.R:0)+(v.m||0);
+  const TRK={};
+  A.forEach(p=>p.tracks.forEach(tr=>{const at=u=>p.s+p.d*u;
+    (TRK[tr.k]=TRK[tr.k]||[]).push(trip(tr.k,at(tr.from),at(tr.to),tr.keys.map(q=>Object.assign({t:at(q.u),x:cv(q.x),z:cv(q.z)},q.rev?{rev:true}:{},q.lin?{lin:true}:{},q.a!==undefined?{a:q.a/90*(PI/2)}:{}))))}));
+  EQ_ORDER.forEach(k=>{Ps[k]=start(k).concat(...(TRK[k]||[]).concat(CX[k]||[]).filter(a=>a.length).sort((a,b)=>a[0].t-b[0].t))});
   EQ_ORDER.forEach(k=>{EQ[k].path=prepPath(Ps[k],EQ[k].park.a);EQ[k].prev=null});
 }
 
