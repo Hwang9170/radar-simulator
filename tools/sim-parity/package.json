@@ -1,0 +1,8 @@
+{
+  "name": "sim-parity",
+  "private": true,
+  "type": "module",
+  "description": "Frame-by-frame equivalence check for docs/sim against a git ref",
+  "scripts": { "check": "node check.mjs" },
+  "dependencies": { "pngjs": "^7.0.0", "puppeteer-core": "^23.11.1" }
+}
