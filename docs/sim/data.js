@@ -21,6 +21,12 @@ window.RADR_DATA = {
       "lane": 28
     }
   },
+  "damages": [
+    {
+      "id": "c1",
+      "x": 0
+    }
+  ],
   "defaultSize": "medium",
   "sizes": {
     "small": {

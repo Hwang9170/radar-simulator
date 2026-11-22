@@ -484,10 +484,14 @@ const MTH=(()=>{const m=CFG.method||{};const slab=num(m.slab,0.45,0.15,1.2);
   return {name:str(m.name,'급속경화 콘크리트 캡 공법'),capMaterial:str(m.capMaterial,'급속경화 콘크리트'),fillMaterial:str(m.fillMaterial,'쇄석 골재'),
     slab,cap:Math.min(num(m.cap,0.30,0.05,1),slab-0.05),upFactor:num(m.upFactor,1.6,1.05,3),cutMargin:num(m.cutMargin,0.4,0,2),passes:Math.round(num(m.passes,3,1,12))}})();
 const S_MAX=RADR_SCN.S_MAX;
-// 현장 배치 (data.js site): 활주로 크기, 장비 대기 지역(대기 칸 x·z·간격·방향, 이동로 z). 좌표는 크레이터 중심 기준 m
+// 현장 배치 (data.js site): 활주로 크기, 장비 대기 지역(대기 칸 x·z·간격·방향, 이동로 z). 대기 지역 좌표는 크레이터 중심 기준 m
 const SITE=(()=>{const s=CFG.site||{},rw=s.runway||{},st=s.staging||{};
   return {rwLen:num(rw.length,900,400,4000),rwWidth:num(rw.width,45,41,150),
     stX:num(st.x,-40,-2000,2000),stZ:num(st.z,40,10,400),stGap:num(st.spacing,9,4,40),stHeading:num(st.heading,90,-360,360),lane:num(st.lane,28,16,400)}})();
+// 피해 지점 (data.js damages[0].x): 활주로 중심에서 활주로 방향으로 떨어진 거리(m).
+// 3D 장면은 크레이터 중심을 원점으로 두고, 활주로·시설물을 rx() 로 -x 만큼 옮겨 그립니다. 장비 대기 지역은 크레이터를 따라갑니다.
+const CX=num(((CFG.damages||[])[0]||{}).x,0,-(SITE.rwLen/2-60),SITE.rwLen/2-60);
+const rx=x=>x-CX;
 const SIZES={};
 Object.entries(CFG.sizes||{}).forEach(([k,v])=>{if(!/^[a-z0-9_-]+$/i.test(k)||!v)return;
   const maxR=(S_MAX-0.5-MTH.cutMargin)/MTH.upFactor;const dia=Math.min(num(v.dia,7.5,1,32),maxR*2);
@@ -752,11 +756,11 @@ function wheel(g,r,w,x,y,z,list){const wg=new THREE.Group();wg.position.set(x,y,
 const RW_HALF=SITE.rwWidth/2, PATCH=20, RES=0.25, N=Math.round(PATCH*2/RES)+1, RW_LEN=SITE.rwLen;
 // world-space shading shared by every concrete surface, so the repair patch is seamless with the runway
 const GU={tSoil:{value:TEX.soil},tSoilN:{value:TEX.soilN},tGravel:{value:TEX.gravel},tGravelN:{value:TEX.gravelN},tFresh:{value:TEX.fresh},tFreshN:{value:TEX.freshN},
-  tMacro:{value:TEX.macro},tDamage:{value:null},uBlast:{value:0},uS:{value:5},uCut:{value:0},uConcX:{value:-99},uConcOn:{value:0},uMarkX:{value:-999},uUpR:{value:6},uPatch:{value:PATCH},uRWH:{value:RW_HALF},uRWL:{value:RW_LEN/2}};
+  tMacro:{value:TEX.macro},tDamage:{value:null},uBlast:{value:0},uS:{value:5},uCut:{value:0},uConcX:{value:-99},uConcOn:{value:0},uMarkX:{value:-999},uUpR:{value:6},uPatch:{value:PATCH},uRWH:{value:RW_HALF},uRWL:{value:RW_LEN/2},uCrX:{value:CX}};
 const G_DECL=`
 varying vec4 vW;varying vec2 vX;
 uniform sampler2D tSoil,tSoilN,tGravel,tGravelN,tFresh,tFreshN,tMacro,tDamage;
-uniform float uBlast,uS,uCut,uConcX,uConcOn,uMarkX,uUpR,uPatch,uRWH,uRWL;`;
+uniform float uBlast,uS,uCut,uConcX,uConcOn,uMarkX,uUpR,uPatch,uRWH,uRWL,uCrX;`;
 const G_MAP=`
 vec2 gWP=vec2(vUv.x*10.0,vUv.y*10.0+2.5);
 vec4 texelColor=texture2D(map,vUv)*vW.x+texture2D(tSoil,gWP*0.25)*vW.y+texture2D(tGravel,gWP*0.5)*vW.z+texture2D(tFresh,gWP*0.25)*vW.w;
@@ -766,9 +770,10 @@ float gM=texture2D(tMacro,gWP*0.0045).r,gM2=texture2D(tMacro,gWP*0.037+0.3).g,gM
 diffuseColor.rgb*=0.86+0.2*gM+0.1*gM2;
 vec2 gA=abs(gWP);
 float gAA=max(fwidth(gWP.x),fwidth(gWP.y));
+vec2 gR=gWP+vec2(uCrX,0.0),gRA=abs(gR); // runway coordinates (crater at runway x = uCrX)
 // rubber deposits along the touchdown zones
-float tdz=smoothstep(uRWL-320.0,uRWL-270.0,gA.x)*(1.0-smoothstep(uRWL-120.0,uRWL-30.0,gA.x));
-diffuseColor.rgb*=1.0-tdz*vW.x*0.5*smoothstep(0.35,0.75,gM3)*(1.0-smoothstep(4.0,13.0,gA.y));
+float tdz=smoothstep(uRWL-320.0,uRWL-270.0,gRA.x)*(1.0-smoothstep(uRWL-120.0,uRWL-30.0,gRA.x));
+diffuseColor.rgb*=1.0-tdz*vW.x*0.5*smoothstep(0.35,0.75,gM3)*(1.0-smoothstep(4.0,13.0,gRA.y));
 if(gA.x<uPatch&&gA.y<uPatch){
   vec4 dm=texture2D(tDamage,(gWP+uPatch)/(2.0*uPatch));
   diffuseColor.rgb*=1.0-uBlast*(dm.r*0.85*vW.x+dm.g*0.62)*vX.y;
@@ -780,8 +785,8 @@ if(gA.x<uPatch&&gA.y<uPatch){
 }
 float gPaint=0.0;
 {
-  float cl=(1.0-smoothstep(0.45-gAA,0.45+gAA,gA.y))*step(mod(gWP.x+1000.0,50.0),30.0)*step(gA.x,uRWL-50.0);
-  float el=(1.0-smoothstep(0.45-gAA,0.45+gAA,abs(gA.y-(uRWH-0.75))))*step(gA.x,uRWL)*step(gA.y,uRWH);
+  float cl=(1.0-smoothstep(0.45-gAA,0.45+gAA,gRA.y))*step(mod(gR.x+1000.0,50.0),30.0)*step(gRA.x,uRWL-50.0);
+  float el=(1.0-smoothstep(0.45-gAA,0.45+gAA,abs(gRA.y-(uRWH-0.75))))*step(gRA.x,uRWL)*step(gRA.y,uRWH);
   float orig=vW.x*vX.y*(1.0-uBlast*step(length(gWP),uUpR*1.05));
   float fresh=vW.w*step(gWP.x,uMarkX);
   gPaint=clamp((cl*(orig+fresh)+el*vW.x)*(0.72+0.3*gM2+0.15*gM3),0.0,1.0);
@@ -803,10 +808,10 @@ function setGroundAttrs(geo){const p=geo.attributes.position,n=p.count;const uv=
   geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));geo.setAttribute('aW',new THREE.BufferAttribute(w,4));geo.setAttribute('aX',new THREE.BufferAttribute(xa,2));geo.setAttribute('color',new THREE.BufferAttribute(c,3));return geo}
 function concPiece(x0,x1,z0,z1,y){const geo=new THREE.PlaneGeometry(x1-x0,z1-z0);geo.rotateX(-PI/2);geo.translate((x0+x1)/2,y||0,(z0+z1)/2);setGroundAttrs(geo);
   const m=new THREE.Mesh(geo,GROUND);m.receiveShadow=true;scene.add(m);return m}
-concPiece(-RW_LEN/2,-PATCH,-RW_HALF,RW_HALF);concPiece(PATCH,RW_LEN/2,-RW_HALF,RW_HALF);
+concPiece(rx(-RW_LEN/2),-PATCH,-RW_HALF,RW_HALF);concPiece(PATCH,rx(RW_LEN/2),-RW_HALF,RW_HALF);
 concPiece(-PATCH,PATCH,PATCH,RW_HALF);concPiece(-PATCH,PATCH,-RW_HALF,-PATCH);
 // staging apron + taxiway to the shelters
-concPiece(SITE.stX-12,ST_X1+12,SITE.lane+0.5,SITE.stZ+10,-0.015);concPiece(-30,-10,50,192,-0.015);concPiece(-160,140,192,214,-0.015);
+concPiece(SITE.stX-12,ST_X1+12,SITE.lane+0.5,SITE.stZ+10,-0.015);concPiece(rx(-30),rx(-10),50,192,-0.015);concPiece(rx(-160),rx(140),192,214,-0.015);
 // world-uv textured flats with large-scale colour variation (hides tiling)
 function macroMat(map,nmap,tile,amt,o,extra){const m=new THREE.MeshStandardMaterial(Object.assign({map,normalMap:nmap,roughness:.95,metalness:0,envMapIntensity:.45},o||{}));
   m.onBeforeCompile=sh=>{sh.uniforms.tMacro={value:TEX.macro};sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nuniform sampler2D tMacro;')
@@ -816,31 +821,31 @@ function flat(x0,x1,z0,z1,y,mat,tile){const geo=new THREE.PlaneGeometry(x1-x0,z1
   const p=geo.attributes.position;for(let i=0;i<p.count;i++)geo.attributes.uv.setXY(i,p.getX(i)/tile,p.getZ(i)/tile);
   const m=new THREE.Mesh(geo,mat);m.receiveShadow=true;scene.add(m);return m}
 const ASPH=macroMat(TEX.asph,TEX.asphN,4,0.12,{roughness:.9});
-flat(-RW_LEN/2,RW_LEN/2,RW_HALF,RW_HALF+6,-0.01,ASPH,4);flat(-RW_LEN/2,RW_LEN/2,-RW_HALF-6,-RW_HALF,-0.01,ASPH,4);
+flat(rx(-RW_LEN/2),rx(RW_LEN/2),RW_HALF,RW_HALF+6,-0.01,ASPH,4);flat(rx(-RW_LEN/2),rx(RW_LEN/2),-RW_HALF-6,-RW_HALF,-0.01,ASPH,4);
 const GRASS=macroMat(TEX.grass,TEX.grassN,8,0.2,{roughness:1,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2},'diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(1.22,1.08,0.72),smoothstep(0.45,0.8,m2)*0.7);');
-flat(-3000,3000,RW_HALF+6,3000,-0.06,GRASS,8);flat(-3000,3000,-3000,-RW_HALF-6,-0.06,GRASS,8);flat(-3000,-RW_LEN/2,-RW_HALF-6,RW_HALF+6,-0.06,GRASS,8);flat(RW_LEN/2,3000,-RW_HALF-6,RW_HALF+6,-0.06,GRASS,8);
+flat(rx(-3000),rx(3000),RW_HALF+6,3000,-0.06,GRASS,8);flat(rx(-3000),rx(3000),-3000,-RW_HALF-6,-0.06,GRASS,8);flat(rx(-3000),rx(-RW_LEN/2),-RW_HALF-6,RW_HALF+6,-0.06,GRASS,8);flat(rx(RW_LEN/2),rx(3000),-RW_HALF-6,RW_HALF+6,-0.06,GRASS,8);
 // paint: threshold bars, touchdown zone, apron lines
 const PAINT=new THREE.MeshStandardMaterial({color:C(0xe4e4de),roughness:.62,metalness:0,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,envMapIntensity:.5});
 const YPAINT=new THREE.MeshStandardMaterial({color:C(0xd9a92a),roughness:.6,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,envMapIntensity:.5});
 function paintRect(x,z,w,d,mat){const geo=new THREE.PlaneGeometry(w,d);geo.rotateX(-PI/2);const m=new THREE.Mesh(geo,mat||PAINT);m.position.set(x,0.006,z);m.receiveShadow=true;scene.add(m);return m}
-[-1,1].forEach(s=>{for(let i=0;i<12;i++){const z=(i<6?-1:1)*(2.6+(i%6)*3.3);paintRect(s*(RW_LEN/2-26),z,30,1.8)}
-  [150,300].forEach((d,j)=>{[-1,1].forEach(zs=>{for(let k=0;k<(j?2:3);k++)paintRect(s*(RW_LEN/2-d-k*0),zs*(6+k*2.4),22.5,1.6)})});
-  [-1,1].forEach(zs=>paintRect(s*(RW_LEN/2-210),zs*8.5,45,7))});
+[-1,1].forEach(s=>{for(let i=0;i<12;i++){const z=(i<6?-1:1)*(2.6+(i%6)*3.3);paintRect(rx(s*(RW_LEN/2-26)),z,30,1.8)}
+  [150,300].forEach((d,j)=>{[-1,1].forEach(zs=>{for(let k=0;k<(j?2:3);k++)paintRect(rx(s*(RW_LEN/2-d-k*0)),zs*(6+k*2.4),22.5,1.6)})});
+  [-1,1].forEach(zs=>paintRect(rx(s*(RW_LEN/2-210)),zs*8.5,45,7))});
 for(let i=0;i<=EQ_ORDER.length;i++)paintRect(SITE.stX-SITE.stGap/2+i*SITE.stGap,SITE.stZ+0.5,0.15,12,YPAINT);
-paintRect(-20,121,0.3,142,YPAINT);paintRect(-10,203,300,0.3,YPAINT);
+paintRect(rx(-20),121,0.3,142,YPAINT);paintRect(rx(-10),203,300,0.3,YPAINT);
 // edge lights (instanced)
 {const xs=[];for(let x=-RW_LEN/2;x<=RW_LEN/2;x+=60)xs.push(x);const n=xs.length*2;
   const base=new THREE.InstancedMesh(new THREE.CylinderGeometry(.09,.12,.34,8),DARK,n),lens=new THREE.InstancedMesh(new THREE.CylinderGeometry(.13,.13,.12,10),new THREE.MeshStandardMaterial({color:C(0xfff2c8),emissive:C(0xffe7a8),emissiveIntensity:.7,roughness:.1}),n);
-  const d=new THREE.Object3D();let k=0;xs.forEach(x=>[-RW_HALF-1.2,RW_HALF+1.2].forEach(z=>{d.position.set(x,.17,z);d.updateMatrix();base.setMatrixAt(k,d.matrix);d.position.y=.39;d.updateMatrix();lens.setMatrixAt(k,d.matrix);k++}));
+  const d=new THREE.Object3D();let k=0;xs.forEach(x=>[-RW_HALF-1.2,RW_HALF+1.2].forEach(z=>{d.position.set(rx(x),.17,z);d.updateMatrix();base.setMatrixAt(k,d.matrix);d.position.y=.39;d.updateMatrix();lens.setMatrixAt(k,d.matrix);k++}));
   scene.add(base,lens)}
 // distance-remaining signs
 {const signTex=n=>canvasTex((x,w,h)=>{x.fillStyle='#111';x.fillRect(0,0,w,h);x.fillStyle='#f2f2f2';x.font='bold 84px "IBM Plex Mono", monospace';x.textAlign='center';x.textBaseline='middle';x.fillText(n,w/2,h/2+4)},128,128,true);
   [[-300,'7'],[-150,'6'],[150,'3'],[300,'2']].forEach(([x,n])=>{const g=new THREE.Group();const tx=signTex(n);
     box(g,1.6,1.3,0.35,new THREE.MeshStandardMaterial({color:0xffffff,map:tx,roughness:.5,emissive:0xffffff,emissiveMap:tx,emissiveIntensity:.15}),0,0.95,0);cylY(g,0.05,0.4,DARK,-0.5,0.15,0,6);cylY(g,0.05,0.4,DARK,0.5,0.15,0,6);
-    g.position.set(x,0,-RW_HALF-9);g.rotation.y=PI/2;scene.add(g)})}
+    g.position.set(rx(x),0,-RW_HALF-9);g.rotation.y=PI/2;scene.add(g)})}
 
 // ---------- airbase scenery ----------
-const SCN=new THREE.Group();scene.add(SCN);
+const SCN=new THREE.Group();SCN.position.x=rx(0);scene.add(SCN);
 { const concTex=TEX.fresh.clone();concTex.needsUpdate=true;concTex.repeat.set(6,2);
   const shellMat=new THREE.MeshStandardMaterial({color:C(0xb6b2a6),map:concTex,roughness:.9,metalness:0,side:THREE.DoubleSide,envMapIntensity:.6});
   const doorMat=paint(0x55604a,{roughness:.6});const berm=macroMat(TEX.grass,TEX.grassN,8,0.2,{roughness:1});
@@ -894,7 +899,7 @@ const SCN=new THREE.Group();scene.add(SCN);
   const tufts=new THREE.InstancedMesh(tg,new THREE.MeshStandardMaterial({map:TEX.grassTuft,alphaTest:.45,roughness:1,envMapIntensity:.4}),n);
   const r=mulberry32(77);const d=new THREE.Object3D();const col=new THREE.Color();let k=0;let guard=0;
   while(k<n&&guard++<n*6){const x=(r()-.5)*260,z=(r()<.5?1:-1)*(29.2+Math.pow(r(),1.6)*90);
-    if(z>SITE.lane&&z<SITE.stZ+11&&x>SITE.stX-13&&x<ST_X1+13)continue;if(z>49&&x>-31&&x<-9)continue;
+    if(z>SITE.lane&&z<SITE.stZ+11&&x>SITE.stX-13&&x<ST_X1+13)continue;if(z>49&&x>rx(-31)&&x<rx(-9))continue;
     d.position.set(x,-0.06,z);d.rotation.set(0,r()*PI,0);const s=0.6+r()*1.0;d.scale.set(s,s*(0.7+r()*0.7),s);d.updateMatrix();tufts.setMatrixAt(k,d.matrix);
     col.setRGB(0.75+r()*0.35,0.8+r()*0.3,0.6+r()*0.3);tufts.setColorAt(k,col);k++}
   tufts.count=k;tufts.receiveShadow=true;scene.add(tufts)}
