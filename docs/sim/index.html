@@ -232,6 +232,8 @@ td .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:
 #hint{transition:opacity .4s}
 #hint.gone{opacity:0;pointer-events:none}
 #rotateTip{display:none}
+#cfgBadge{font-size:11.5px;color:var(--cyan);border:1px dashed rgba(92,200,224,.55);border-radius:4px;padding:5px 8px;display:flex;gap:8px;align-items:center;justify-content:space-between;line-height:1.4}
+#cfgBadge a{color:var(--fg);font-size:11px;white-space:nowrap}
 #loading{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:40;transition:opacity .5s}
 #loading.gone{opacity:0;pointer-events:none}
 #loading div{display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--muted);font-size:13px}
@@ -313,8 +315,8 @@ td .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:
 
 <div id="left">
 <header class="hud" id="top">
-  <div class="eyebrow">RADR · 활주로 급속 피해복구 <a class="help" href="../" title="기능과 사용법 안내">사용 안내</a></div>
-  <h1>활주로 피해복구 훈련</h1>
+  <div class="eyebrow"><span id="cfgEyebrow">RADR · 활주로 급속 피해복구</span> <a class="help" href="../" title="기능과 사용법 안내">사용 안내</a></div>
+  <h1 id="cfgTitle">활주로 피해복구 훈련</h1>
   <div class="seg" id="modeSeg" role="group" aria-label="모드">
     <button data-mode="learn" class="on">학습</button><button data-mode="quiz">평가</button><button data-mode="ai">AI 교관</button>
   </div>
@@ -322,11 +324,8 @@ td .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:
     <span class="r"><span class="lv" id="lvN">Lv.1</span><span class="tt" id="lvT">훈련병</span><span class="xp" id="lvX">0 XP</span></span>
     <span class="xpb"><i id="lvB"></i></span>
   </button>
-  <div class="seg" id="sizeSeg" role="group" aria-label="크레이터 규모">
-    <button data-size="small" id="sz-small">소형<small>Ø4.5m</small></button>
-    <button data-size="medium" id="sz-medium" class="on">중형<small>Ø7.5m</small></button>
-    <button data-size="large" id="sz-large">대형<small>Ø12m</small></button>
-  </div>
+  <div class="seg" id="sizeSeg" role="group" aria-label="크레이터 규모"></div>
+  <div id="cfgBadge" hidden></div>
 </header>
 
 <nav class="hud" id="phases" aria-label="작업 절차">
@@ -361,12 +360,16 @@ td .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:
     <div class="chips" id="phEquip"></div>
   </section>
 
+  <section id="crewCard">
+    <div class="k" id="crewHead">복구팀 편성</div>
+    <table id="crewTable"></table>
+  </section>
   <section id="dimCard">
     <div class="k">크레이터 · 복구 치수</div>
     <table id="dimTable"></table>
   </section>
 
-  <p class="note">수치와 소요 시간은 교육용 예시값입니다. 실제 작업은 부대 교범과 기술지시서를 따릅니다.</p>
+  <p class="note" id="cfgNote">수치와 소요 시간은 교육용 예시값입니다. 실제 작업은 부대 교범과 기술지시서를 따릅니다.</p>
 </aside>
 
 <aside class="hud side" id="quiz" aria-live="polite">
@@ -443,8 +446,10 @@ td .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Sky.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/geometries/RoundedBoxGeometry.js"></script>
+<script src="data.js"></script>
+<script src="config.js"></script>
 <script>
-(function(){
+window.RADR_MAIN=function(){
 'use strict';
 // ---------- utils ----------
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -459,7 +464,12 @@ function vnoise(x,z){const xi=Math.floor(x),zi=Math.floor(z),xf=x-xi,zf=z-zi;con
 function track(c,keys){for(let i=0;i<keys.length-1;i++){if(c<=keys[i+1][0]){const k0=keys[i],k1=keys[i+1];return lerp(k0[1],k1[1],sm((c-k0[0])/(k1[0]-k0[0])))}}return keys[keys.length-1][1]}
 const fmt=(v,d=1)=>v.toFixed(d);
 function hm(min){min=Math.max(0,Math.round(min));return Math.floor(min/60)+':'+String(min%60).padStart(2,'0')}
-const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+// ---------- config (data.js 기본값 ← config.js 배포 설정 ← 편집기 저장값) ----------
+const CFG=window.RADR_CFG,PREVIEW=!!window.RADR_PREVIEW,CFG_SRC=window.RADR_CFG_SRC||'default';
+const num=(v,d,a,b)=>{v=Number(v);return Number.isFinite(v)?Math.max(a,Math.min(b,v)):d};
+const hexOf=(s,d)=>{const m=/^#?([0-9a-f]{6})$/i.exec(String(s||''));return m?parseInt(m[1],16):d};
+const str=(v,d)=>typeof v==='string'&&v.trim()?v:d;
+const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set(k,v){if(PREVIEW&&k==='radr.pg')return;try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
 // ---------- quality ----------
 const COARSE=!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches);
@@ -469,16 +479,21 @@ const QUAL=QPREF==='auto'?((COARSE||SMALL)?'low':'high'):QPREF;
 const HI=QUAL==='high';
 
 // ---------- scenario ----------
-const SIZES={
-  small:{label:'소형',dia:4.5,depth:1.5,lip:0.30},
-  medium:{label:'중형',dia:7.5,depth:2.2,lip:0.45},
-  large:{label:'대형',dia:12,depth:3.2,lip:0.60}
-};
+const MTH=(()=>{const m=CFG.method||{};const slab=num(m.slab,0.45,0.15,1.2);
+  return {name:str(m.name,'급속경화 콘크리트 캡 공법'),capMaterial:str(m.capMaterial,'급속경화 콘크리트'),fillMaterial:str(m.fillMaterial,'쇄석 골재'),
+    slab,cap:Math.min(num(m.cap,0.30,0.05,1),slab-0.05),upFactor:num(m.upFactor,1.6,1.05,3),cutMargin:num(m.cutMargin,0.4,0,2),passes:Math.round(num(m.passes,3,1,12))}})();
+const S_MAX=14; // 절단 반폭 한계: 장비 이동로(z=28)와 지형 패치(±20 m) 안에 들어가야 함
+const SIZES={};
+Object.entries(CFG.sizes||{}).forEach(([k,v])=>{if(!/^[a-z0-9_-]+$/i.test(k)||!v)return;
+  const maxR=(S_MAX-0.5-MTH.cutMargin)/MTH.upFactor;const dia=Math.min(num(v.dia,7.5,1,32),maxR*2);
+  SIZES[k]={label:str(v.label,k),dia,depth:Math.max(num(v.depth,2.2,0.3,6),MTH.slab+0.2),lip:num(v.lip,0.45,0,1.5)}});
+if(!Object.keys(SIZES).length)SIZES.medium={label:'중형',dia:7.5,depth:2.2,lip:0.45};
+const DEF_SIZE=SIZES[CFG.defaultSize]?CFG.defaultSize:Object.keys(SIZES)[0];
 let SC;
 function makeScenario(key){
-  const c=SIZES[key];const R=c.dia/2;const upR=R*1.6;
-  const S=Math.ceil((upR+0.4)*2)/2; // half side, 0.5 m grid
-  const slab=0.45,cap=0.30;
+  const c=SIZES[key];const R=c.dia/2;const upR=R*MTH.upFactor;
+  const S=Math.min(S_MAX,Math.ceil((upR+MTH.cutMargin)*2)/2); // half side, 0.5 m grid
+  const slab=MTH.slab,cap=MTH.cap;
   const r0=R*Math.sqrt(Math.max(0,1-slab/c.depth));
   const fillVol=PI*r0*r0*(c.depth-slab)/2+(2*S)*(2*S)*(slab-cap);
   return {key,label:c.label,R,D:c.depth,L:c.lip,upR,S,slab,cap,
@@ -486,60 +501,40 @@ function makeScenario(key){
 }
 
 // ---------- phases ----------
-const PH=[
- {title:'피해 발생·상황 전파',en:'Attack & alert',real:5,dur:7,equip:[],goal:'공습으로 활주로에 탄이 떨어졌다. 피해 위치를 파악해 활주로 운용을 멈추고 복구팀을 소집한다.',
-  steps:['공습 경보 해제 확인','피해 신고 접수, 활주로 운용 중지','복구팀(공병)과 장비를 대기 지역에 집결'],m:'상황'},
- {title:'피해평가·불발탄 확인',en:'Damage assessment / UXO',real:20,dur:12,equip:['eod'],goal:'불발탄(UXO)이 없는지 확인한 뒤 크레이터 치수를 재고, 최소운영활주로(MOS)를 정한다.',
-  steps:['EOD팀이 불발탄 탐지·처리','겉보기 직경·깊이·융기부 범위 측정','MOS 선정 (예: 폭 15 m × 길이 1,525 m)','절단 범위를 융기부 바깥까지 표시'],m:'측정'},
- {title:'파편 제거',en:'Debris removal',real:30,dur:14,equip:['loader','dump'],goal:'크레이터 주변의 큰 콘크리트 파편을 걷어내 장비가 들어갈 공간을 만든다.',
-  steps:['휠로더로 큰 파편을 밀어내기','덤프트럭에 실어 반출','장비 진입로와 작업 공간 확보'],m:'파편 제거'},
- {title:'포장 절단',en:'Saw cutting',real:35,dur:14,equip:['saw'],goal:'손상된 포장의 경계를 정사각형으로 잘라 깨끗한 수직면을 만든다.',
-  steps:['융기부 바깥 0.4 m 이상에 절단선 설정','네 변을 차례로 슬래브 전체 두께까지 절단','수직 절단면이 새 콘크리트와 하중을 잘 주고받는다'],m:'절단 길이'},
- {title:'파손부 굴착',en:'Excavation',real:45,dur:16,equip:['excavator','dump'],goal:'절단선 안쪽의 깨진 슬래브와 솟아오른 흙을 걷어낸다.',
-  steps:['굴삭기로 파손 슬래브 파쇄·제거 (필요하면 브레이커 사용)','슬래브 두께(약 0.45 m)까지 걷어냄','덤프트럭으로 반출'],m:'굴착'},
- {title:'되메우기',en:'Backfill',real:30,dur:12,equip:['dump','loader'],goal:'크레이터를 쇄석 골재로 채워 콘크리트 아래 지지층을 만든다.',
-  steps:['덤프트럭이 쇄석 골재를 투하','휠로더로 고르게 펴기','표면 아래 약 0.30 m(콘크리트 두께)까지 채움'],m:'되메움 높이'},
- {title:'다짐',en:'Compaction',real:20,dur:10,equip:['roller'],goal:'되메움 층을 다져 항공기 하중에 의한 침하를 막는다.',
-  steps:['진동롤러로 겹치게 왕복 다짐','다짐 후 높이 확인, 부족분 보충'],m:'다짐 패스'},
- {title:'급속경화 콘크리트 타설',en:'Rapid-setting concrete cap',real:30,dur:14,equip:['mixer'],goal:'현장에서 배합한 급속경화 콘크리트로 보수 구역 표면을 덮는다.',
-  steps:['부피계량식 믹서트럭이 현장에서 배합','한쪽 끝부터 타설하고 스크리드로 평탄화','기존 포장과 높이 차를 최소화'],m:'타설량'},
- {title:'양생',en:'Curing',real:60,dur:8,equip:[],goal:'항공기 하중을 견딜 강도가 나올 때까지 표면을 보호하며 기다린다.',
-  steps:['양생제 살포, 표면 보호','강도 확인 (재료에 따라 약 1~2시간, 예시)'],m:'양생 경과'},
- {title:'FOD 청소',en:'FOD sweeping',real:15,dur:10,equip:['sweeper'],goal:'항공기 엔진에 빨려 들어갈 수 있는 작은 이물질(FOD)을 없앤다.',
-  steps:['노면청소차로 보수 구역과 주변을 쓸기','도보로 FOD 최종 점검'],m:'FOD 수거'},
- {title:'표지 복구·운용 재개',en:'Marking & reopening',real:20,dur:14,equip:['painter'],goal:'중심선 표지를 다시 칠하고 관제에 보고한 뒤 항공기 운용을 재개한다.',
-  steps:['중심선 도색 복구','최종 점검 후 복구 완료 보고','항공기 이륙 재개'],m:'중심선 도색'}
-];
-let TT=0,RT=0;PH.forEach((p,i)=>{p.i=i;p.s=TT;TT+=p.dur;p.rs=RT;RT+=p.real;p.d=p.dur});
-const P=(i,u)=>PH[i].s+PH[i].d*u;
-const phU=(i,t)=>(t-PH[i].s)/PH[i].d;
-const winU=(i,t,a,b)=>clamp((phU(i,t)-a)/(b-a),0,1);
+const EQ_KEYS=['eod','loader','dump','saw','excavator','roller','mixer','sweeper','painter'];
+// 내장 단계 ID — 3D 애니메이션이 이 ID(=기본 순서 번호)에 연결됩니다. 순서·사용 여부는 설정에서 바꿀 수 있고,
+// 애니메이션이 없는 사용자 정의 단계도 끼워 넣을 수 있습니다.
+const PH_IDS=['alert','assess','debris','cut','excavate','backfill','compact','pour','cure','fod','mark'];
+const ALL=[];
+(CFG.phases||[]).forEach(p=>{if(!p)return;const bi=PH_IDS.indexOf(p.id);if(bi>=0&&ALL.some(q=>q.bi===bi))return;
+  ALL.push({id:bi>=0?p.id:String(p.id||'custom-'+ALL.length),bi:bi>=0?bi:-1,on:p.on!==false,title:str(p.title,'단계'),en:str(p.en,''),real:num(p.real,10,0,600),dur:num(p.dur,10,4,120),crew:Math.round(num(p.crew,0,0,999)),
+    goal:String(p.goal||''),steps:(Array.isArray(p.steps)?p.steps:[]).map(String).filter(Boolean),m:str(p.m,'진행'),equip:(Array.isArray(p.equip)?p.equip:[]).filter(k=>EQ_KEYS.includes(k))})});
+PH_IDS.forEach((id,bi)=>{if(!ALL.some(q=>q.bi===bi))ALL.push({id,bi,on:false,title:id,en:'',real:0,dur:4,crew:0,goal:'',steps:[],m:'',equip:[]})});
+if(!ALL.some(p=>p.on))ALL.forEach(p=>p.on=true);
+const A=[];ALL.forEach(p=>{if(p.bi>=0)A[p.bi]=p});
+let TT=0,RT=0;ALL.forEach(p=>{p.d=p.on?p.dur:0.0001;p.s=TT;TT+=p.d;p.rs=RT;if(p.on)RT+=p.real});
+const PH=ALL.filter(p=>p.on);PH.forEach((p,i)=>p.i=i);
+// P/phU/winU: 내장 단계 번호(bi) 기준 — 애니메이션 코드용
+const P=(n,u)=>A[n].s+A[n].d*u;
+const phU=(n,t)=>(t-A[n].s)/A[n].d;
+const winU=(n,t,a,b)=>clamp((phU(n,t)-a)/(b-a),0,1);
+// 화면에 보이는 단계(PH 순번) 기준
+const phUi=(i,t)=>(t-PH[i].s)/PH[i].d;
+const biOf=i=>PH[i]?PH[i].bi:-1;
+const phIdx=bi=>A[bi]?PH.indexOf(A[bi]):-1;
 function phaseAt(t){for(let i=PH.length-1;i>=0;i--)if(t>=PH[i].s)return i;return 0}
 const T_BLAST=P(0,0.35);
 
 // ---------- equipment metadata ----------
-const EQ_ORDER=['eod','loader','dump','saw','excavator','roller','mixer','sweeper','painter'];
-const EQ={
- eod:{name:'EOD·피해평가 차량',short:'EOD 차량',en:'EOD / assessment vehicle',role:'불발탄 탐지·처리 요원과 측정 요원을 태우고 가장 먼저 현장에 들어간다.',
-  specs:[['구분','소형전술차량 (4×4)'],['전장','약 5.0 m'],['탑승','4명'],['탑재','탐지기, 측정 장비, 표지 깃발']]},
- loader:{name:'휠로더',short:'휠로더',en:'Wheel loader',role:'큰 파편을 밀어내고, 되메우기 골재를 크레이터 안으로 펴 넣는다.',
-  specs:[['운전중량','약 17 t'],['버킷 용량','3.0 m³'],['전장','약 8.2 m'],['최고속도','약 38 km/h']]},
- dump:{name:'덤프트럭',short:'덤프트럭',en:'Dump truck',role:'파편과 굴착토를 실어 나가고, 되메우기용 쇄석 골재를 실어 온다.',
-  specs:[['적재량','15 t (약 10 m³)'],['구동','6×4'],['전장','약 8.3 m'],['적재함 경사','약 50°']]},
- saw:{name:'콘크리트 절단기',short:'절단기',en:'Concrete saw',role:'손상 범위 바깥을 정사각형으로 잘라 수직 절단면을 만든다.',
-  specs:[['블레이드 지름','Ø900 mm (36인치)'],['최대 절단 깊이','약 37 cm'],['출력','약 65 hp'],['방식','습식 다이아몬드 절단']]},
- excavator:{name:'굴삭기',short:'굴삭기',en:'Excavator',role:'절단선 안쪽의 깨진 슬래브와 융기된 흙을 파내 덤프트럭에 싣는다.',
-  specs:[['운전중량','약 21 t'],['버킷 용량','0.8 m³'],['최대 굴착 깊이','약 6.6 m'],['부착물','버킷, 유압 브레이커']]},
- roller:{name:'진동롤러',short:'진동롤러',en:'Vibratory roller',role:'되메운 골재 층을 진동으로 다져 빈틈과 침하를 없앤다.',
-  specs:[['운전중량','약 11 t'],['드럼 폭','2.1 m'],['드럼 지름','약 1.5 m'],['기진력','약 250 kN (고/저 진폭)']]},
- mixer:{name:'부피계량식 콘크리트 믹서트럭',short:'믹서트럭',en:'Volumetric concrete mixer',role:'시멘트·골재·물을 따로 싣고 와서 현장에서 바로 배합해 급속경화 콘크리트를 타설한다.',
-  specs:[['적재','약 7.6 m³ (10 yd³)'],['최대 생산량','약 45 m³/h'],['배합','현장 연속 계량'],['슈트 길이','약 3 m']]},
- sweeper:{name:'노면청소차',short:'청소차',en:'Runway sweeper',role:'보수 구역과 주변의 작은 돌·파편(FOD)을 쓸어 담는다.',
-  specs:[['청소 폭','약 3.0 m'],['호퍼 용량','약 6 m³'],['방식','회전 브러시 + 진공 흡입'],['작업 속도','약 5~15 km/h']]},
- painter:{name:'차선도색기',short:'도색기',en:'Line striper',role:'보수 구역을 지나는 중심선 표지를 다시 칠한다.',
-  specs:[['도색 폭','15~90 cm'],['도료 탱크','약 400 L'],['작업 속도','약 5~10 km/h'],['도료','상온 경화형 도료']]}
-};
+const EQ_ORDER=EQ_KEYS.slice();
+const EQ={};
+EQ_ORDER.forEach(k=>{const v=((CFG.equipment||{}).items||{})[k]||{};
+  EQ[k]={name:str(v.name,k),short:str(v.short,str(v.name,k)),en:str(v.en,''),role:String(v.role||''),specs:(Array.isArray(v.specs)?v.specs:[]).filter(r=>Array.isArray(r)&&r.length>=2).map(r=>[String(r[0]),String(r[1])]),
+    off:v.on===false,color:v.color,scale:num(v.scale,1,0.3,3),sound:num(v.sound,50,20,400)}});
 EQ_ORDER.forEach((k,i)=>{EQ[k].park={x:-40+i*9,z:40,a:PI/2}});
+const EQ_ON=EQ_ORDER.filter(k=>!EQ[k].off);
+PH.forEach(p=>{p.equip=p.equip.filter(k=>!EQ[k].off)});
+const EQC=(k,d)=>hexOf(EQ[k].color,d);
 
 // ---------- three setup ----------
 const stage=document.getElementById('stage');
@@ -547,7 +542,7 @@ const renderer=new THREE.WebGLRenderer({antialias:HI||(window.devicePixelRatio||
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,HI?2:1.5));
 renderer.outputEncoding=THREE.sRGBEncoding;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=0.62;
+renderer.toneMappingExposure=num((CFG.env||{}).exposure,0.62,0.2,2);
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=HI?THREE.PCFSoftShadowMap:THREE.PCFShadowMap;
 renderer.localClippingEnabled=true;
 stage.appendChild(renderer.domElement);
@@ -561,12 +556,12 @@ controls.target.set(0,0,0);
 const C=h=>new THREE.Color(h).convertSRGBToLinear();
 
 // sky + sun
-const SUN_DIR=new THREE.Vector3().setFromSphericalCoords(1,THREE.MathUtils.degToRad(90-36),THREE.MathUtils.degToRad(128));
+const SUN_DIR=new THREE.Vector3().setFromSphericalCoords(1,THREE.MathUtils.degToRad(90-num((CFG.env||{}).sunElev,36,5,85)),THREE.MathUtils.degToRad(num((CFG.env||{}).sunAz,128,0,360)));
 function makeSky(scale){const s=new THREE.Sky();s.scale.setScalar(scale);const u=s.material.uniforms;
   u.turbidity.value=5.5;u.rayleigh.value=1.4;u.mieCoefficient.value=0.0045;u.mieDirectionalG.value=0.82;u.sunPosition.value.copy(SUN_DIR);return s}
 const sky=makeSky(6000);scene.add(sky);
 const FOG_COL=0xc3cfd8;
-scene.fog=new THREE.FogExp2(FOG_COL,0.00105);
+scene.fog=new THREE.FogExp2(FOG_COL,num((CFG.env||{}).fog,0.00105,0,0.01));
 const hemi=new THREE.HemisphereLight(C(0xcfdcec),C(0x6d6550),0.35);scene.add(hemi);
 const sun=new THREE.DirectionalLight(C(0xfff0d8),3.1);
 sun.castShadow=true;
@@ -939,7 +934,7 @@ function computeState(t){
   ST.cure=winU(8,t,0,1);
   ST.sweep=winU(9,t,.08,.92);
   ST.mark=winU(10,t,.1,.45);
-  ST.fillTop=ST.comp>0?lerp(-0.24,-0.30,ST.comp):lerp(-SC.D-0.05,-0.24,ST.fill);
+  ST.fillTop=ST.comp>0?lerp(-SC.cap+0.06,-SC.cap,ST.comp):lerp(-SC.D-0.05,-SC.cap+0.06,ST.fill);
 }
 function updatePatch(){
   const {R,S,slab,upR}=SC;const b=ST.blast;
@@ -1116,7 +1111,7 @@ function cab(g,w,h,d,mat,x,y,z,glassFront){ // body with inset glass on four sid
   box(g,w*0.82,h*0.5,d+0.02,GLASS,x,y+h*0.16,z);box(g,w+0.02,h*0.5,d*0.84,GLASS,x,y+h*0.16,z)}
 function mirrors(g,x,y,z){[-1,1].forEach(s=>{cylX(g,0.02,0.35,DARK,x,y+0.15,s*(z+0.15),5);box(g,0.06,0.32,0.2,BLACK,x,y,s*(z+0.32))})}
 function lights(g,x,y,z){[-1,1].forEach(s=>{box(g,0.06,0.16,0.28,LAMP,x,y,s*z)})}
-function buildEOD(){const g=new THREE.Group();const p=paint(0xb3a27a);const W=[];
+function buildEOD(){const g=new THREE.Group();const p=paint(EQC('eod',0xb3a27a));const W=[];
   box(g,4.4,0.3,1.5,DARK,0,0.72,0);rbox(g,4.9,0.8,2.2,p,0,1.18,0,0.12);rbox(g,1.55,0.42,2.1,p,1.62,1.72,0,0.12);
   box(g,0.06,0.38,1.4,BLACK,2.46,1.28,0);for(let i=0;i<5;i++)box(g,0.07,0.04,1.3,DARK,2.47,1.15+i*0.07,0);
   lights(g,2.44,1.5,0.82);rbox(g,0.28,0.3,2.3,DARK,2.55,0.88,0,0.05);[-1,1].forEach(s=>box(g,0.06,0.12,0.2,TAIL,-2.46,1.4,s*0.85));
@@ -1126,7 +1121,7 @@ function buildEOD(){const g=new THREE.Group();const p=paint(0xb3a27a);const W=[]
   box(g,0.22,0.12,1.2,AMBER,0.2,2.66,0);cylY(g,0.012,2.2,DARK,-1.9,3.7,0.85,5);mirrors(g,0.5,2.0,1.1);
   const sp=new THREE.Mesh(TIRE_CACHE['0.44_0.3']||(TIRE_CACHE['0.44_0.3']=tireGeo(0.44,0.3)),TIRE);sp.rotation.y=PI/2;sp.position.set(-2.62,1.55,0);sp.castShadow=true;g.add(sp);
   [[1.6,1],[1.6,-1],[-1.6,1],[-1.6,-1]].forEach(([x,z])=>wheel(g,0.48,0.38,x,0.48,z,W));return {g,wheels:W}}
-function buildDump(){const g=new THREE.Group();const ol=paint(0x5a663b),W=[];
+function buildDump(){const g=new THREE.Group();const ol=paint(EQC('dump',0x5a663b)),W=[];
   box(g,7.6,0.36,1.1,DARK,0,0.95,0.0);[-0.6,0.6].forEach(z=>box(g,7.6,0.3,0.12,DARK,0,0.95,z));
   cab(g,2.0,1.6,2.4,ol,2.95,2.35,0);rbox(g,1.0,0.9,2.42,ol,3.55,1.45,0,0.1);box(g,0.06,0.7,1.6,BLACK,4.06,1.45,0);for(let i=0;i<6;i++)box(g,0.07,0.05,1.5,DARK,4.07,1.2+i*0.1,0);
   lights(g,4.05,1.05,0.95);rbox(g,0.3,0.32,2.5,DARK,4.15,0.85,0,0.06);mirrors(g,3.7,2.5,1.2);box(g,0.2,0.12,1.0,AMBER,2.9,3.2,0);
@@ -1142,7 +1137,7 @@ function buildDump(){const g=new THREE.Group();const ol=paint(0x5a663b),W=[];
   hyd(g,[-0.4,1.0,0],bed,[3.4,0.0,0],0.11);
   return {g,bed,load,wheels:W}}
 function bucketGeo(R,Wd){const g=new THREE.Group();const sh=new THREE.CylinderGeometry(R,R,Wd,16,1,true,PI*0.15,PI*1.05);sh.rotateX(PI/2);return sh}
-function buildLoader(){const g=new THREE.Group();const y=paint(0xd9a21b),W=[];
+function buildLoader(){const g=new THREE.Group();const y=paint(EQC('loader',0xd9a21b)),W=[];
   rbox(g,3.0,1.4,2.2,y,-1.9,1.55,0,0.18);rbox(g,0.7,1.1,2.3,y,-3.55,1.55,0,0.2);for(let i=0;i<6;i++)box(g,0.06,0.04,1.6,DARK,-3.92,1.2+i*0.12,0);
   box(g,0.5,0.06,1.8,DARK,-2.4,2.28,0);cylY(g,0.08,0.9,DARK,-2.9,2.7,0.5,8);box(g,0.12,0.08,0.12,TAIL,-3.92,1.85,0.9);box(g,0.12,0.08,0.12,TAIL,-3.92,1.85,-0.9);
   rbox(g,0.9,0.9,1.4,DARK,-0.4,1.3,0,0.1);
@@ -1169,7 +1164,7 @@ function trackShoes(g,len,h,zc,n){const per=2*(len-h)+PI*h;const im=new THREE.In
     if(s<2*st){x=-st+s;y=-r;a=0}else if((s-=2*st)<PI*r){a=s/r;x=st+Math.sin(a)*r;y=-Math.cos(a)*r}else if((s-=PI*r)<2*st){x=st-s;y=r;a=PI}else{s-=2*st;a=PI+s/r;x=-st+Math.sin(a)*r;y=-Math.cos(a)*r}
     d.position.set(x,y+r,zc);d.rotation.set(0,0,a);d.updateMatrix();im.setMatrixAt(i,d.matrix)}
   im.castShadow=true;im.receiveShadow=true;g.add(im);return im}
-function buildExcavator(){const g=new THREE.Group();const y=paint(0xe0a526);
+function buildExcavator(){const g=new THREE.Group();const y=paint(EQC('excavator',0xe0a526));
   [-1.25,1.25].forEach(z=>{trackShoes(g,4.6,0.9,z,HI?56:40);box(g,3.6,0.5,0.45,DARK,0,0.45,z);cylZ(g,0.36,0.5,DARK,1.9,0.45,z,14);cylZ(g,0.4,0.5,DARK,-1.9,0.45,z,14);
     for(let i=0;i<5;i++)cylZ(g,0.14,0.5,STEEL,-1.3+i*0.65,0.2,z,10)});
   box(g,2.6,0.5,1.9,DARK,0,0.65,0);cylY(g,0.9,0.25,DARK,0,1.0,0,20);
@@ -1191,7 +1186,7 @@ function buildExcavator(){const g=new THREE.Group();const y=paint(0xe0a526);
   for(let i=0;i<4;i++)box(bucket,0.22,0.08,0.1,WEAR,0.68,-0.98,-0.36+i*0.24);
   hyd(upper,[1.5,0.35,-0.3],boom,[2.2,0.25,0],0.13);hyd(boom,[2.6,1.3,0],arm,[-0.55,0.5,0],0.11);hyd(arm,[0.4,0.25,0],bucket,[0.05,0.15,0],0.08);
   return {g,upper,boom,arm,bucket}}
-function buildSaw(){const g=new THREE.Group();const o=paint(0xd8662a),gr=M(0x5d6468,{metalness:.4});const W=[];
+function buildSaw(){const g=new THREE.Group();const o=paint(EQC('saw',0xd8662a)),gr=M(0x5d6468,{metalness:.4});const W=[];
   rbox(g,1.9,0.55,0.9,o,-0.6,0.62,-0.6,0.08);rbox(g,0.9,0.55,0.8,gr,-0.8,1.15,-0.6,0.08);for(let i=0;i<5;i++)box(g,0.8,0.03,0.82,DARK,-0.8,0.95+i*0.1,-0.6);
   cylY(g,0.22,0.5,M(0xe8e8e2,{roughness:.4}),-1.25,1.2,-0.6,14);cylY(g,0.05,0.3,DARK,-0.4,1.55,-0.4,6);
   rail(g,[[-1.4,0.9,-0.25],[-1.9,1.3,-0.25],[-2.0,1.3,-0.25]],0.03,DARK);rail(g,[[-1.4,0.9,-0.95],[-1.9,1.3,-0.95],[-2.0,1.3,-0.95]],0.03,DARK);box(g,0.06,0.06,0.75,DARK,-2.0,1.3,-0.6);
@@ -1203,7 +1198,7 @@ function buildSaw(){const g=new THREE.Group();const o=paint(0xd8662a),gr=M(0x5d6
   const gd=new THREE.CylinderGeometry(0.52,0.52,0.14,24,1,false,0,PI);gd.rotateX(PI/2);addMesh(g,gd,o,0.1,0.25,0).rotation.z=PI/2;
   box(g,1.05,0.12,0.14,o,0.1,0.6,0.08);cylX(g,0.02,1.0,DARK,0.1,0.75,0.1,5);
   return {g,blade,wheels:W}}
-function buildRoller(){const g=new THREE.Group();const o=paint(0xe39a22),W=[];
+function buildRoller(){const g=new THREE.Group();const o=paint(EQC('roller',0xe39a22)),W=[];
   const drum=new THREE.Group();drum.position.set(1.7,0.76,0);g.add(drum);
   const dg=new THREE.CylinderGeometry(0.76,0.76,2.1,40);dg.rotateX(PI/2);const dm=new THREE.Mesh(dg,M(0xb9bdbe,{metalness:.7,roughness:.35,map:TEX.grime}));dm.castShadow=true;drum.add(dm);
   [-1.06,1.06].forEach(z=>{cylZ(drum,0.5,0.05,DARK,0,0,z,20);for(let i=0;i<6;i++){const a=i/6*PI*2;cylZ(drum,0.05,0.07,STEEL,Math.cos(a)*0.35,Math.sin(a)*0.35,z,6)}});
@@ -1214,7 +1209,7 @@ function buildRoller(){const g=new THREE.Group();const o=paint(0xe39a22),W=[];
   box(g,1.3,0.2,1.7,o,-0.5,2.05,0);box(g,0.5,0.6,0.5,SEAT,-0.5,2.45,0);cylY(g,0.03,0.6,DARK,0.15,2.4,0,6);const sw=cylY(g,0.2,0.04,BLACK,0.15,2.72,0,16);sw.rotation.z=0.5;
   box(g,1.4,0.1,1.8,o,-0.5,3.4,0);[[0.1,0.82],[0.1,-0.82],[-1.1,0.82],[-1.1,-0.82]].forEach(([x,z])=>box(g,0.08,1.3,0.08,DARK,x,2.75,z));box(g,0.25,0.12,0.25,AMBER,-0.5,3.5,0);
   return {g,drum,wheels:W}}
-function buildMixer(){const g=new THREE.Group();const w=paint(0xd8d6cf),ol=paint(0x5a663b),W=[];
+function buildMixer(){const g=new THREE.Group();const w=paint(EQC('mixer',0xd8d6cf)),ol=paint(0x5a663b),W=[];
   box(g,8.0,0.36,1.1,DARK,0,0.95,0);cab(g,2.0,1.6,2.4,ol,3.1,2.35,0);rbox(g,1.0,0.9,2.42,ol,3.7,1.45,0,0.1);box(g,0.06,0.7,1.6,BLACK,4.21,1.45,0);
   lights(g,4.2,1.05,0.95);rbox(g,0.3,0.32,2.5,DARK,4.3,0.85,0,0.06);mirrors(g,3.85,2.5,1.2);cylY(g,0.09,1.6,CHROME,2.0,2.7,-1.0,10);
   rbox(g,3.0,1.9,2.4,w,-0.3,2.15,0,0.12);rbox(g,2.0,1.5,2.4,M(0x9da3a6,{metalness:.5,roughness:.4,map:TEX.grime}),-2.7,1.95,0,0.12);
@@ -1228,7 +1223,7 @@ function buildMixer(){const g=new THREE.Group();const w=paint(0xd8d6cf),ol=paint
   cylY(chute,0.15,0.4,DARK,0,0.1,0,10);
   const tip=new THREE.Object3D();tip.position.set(0,-0.05,-3.0);chute.add(tip);
   return {g,chute,tip,wheels:W}}
-function buildSweeper(){const g=new THREE.Group();const w=paint(0xe9e7e1),o=paint(0xe0782a),W=[];
+function buildSweeper(){const g=new THREE.Group();const w=paint(EQC('sweeper',0xe9e7e1)),o=paint(0xe0782a),W=[];
   box(g,5.0,0.36,1.1,DARK,0,0.75,0);cab(g,1.8,1.7,2.3,w,1.7,1.95,0);rbox(g,0.6,0.7,2.32,w,2.45,1.2,0,0.08);lights(g,2.76,1.2,0.9);mirrors(g,2.4,2.2,1.15);
   rbox(g,2.9,1.9,2.3,o,-1.0,1.95,0,0.2);box(g,0.3,0.15,2.3,w,-1.0,2.95,0);for(let i=0;i<5;i++)box(g,0.04,1.4,0.04,DARK,-2.47,1.9,-0.8+i*0.4);
   cylY(g,0.25,0.9,STEEL,-0.2,1.0,-1.0,12);
@@ -1238,7 +1233,7 @@ function buildSweeper(){const g=new THREE.Group();const w=paint(0xe9e7e1),o=pain
     cylY(g,0.04,0.35,DARK,x,0.38,z,6)});
   const beacon=new THREE.Mesh(new THREE.SphereGeometry(0.16,12,8),new THREE.MeshBasicMaterial({color:0xffa000,toneMapped:false}));beacon.position.set(1.7,2.95,0);g.add(beacon);
   return {g,brushes,beacon,wheels:W}}
-function buildPainter(){const g=new THREE.Group();const w=paint(0xeceae4),W=[];
+function buildPainter(){const g=new THREE.Group();const w=paint(EQC('painter',0xeceae4)),W=[];
   rbox(g,2.6,0.55,1.5,w,0,0.62,0,0.08);cylY(g,0.38,0.8,M(0xf2c230,{roughness:.35,metalness:.2}),-0.6,1.35,0,18);cylY(g,0.4,0.05,DARK,-0.6,1.78,0,18);
   rbox(g,0.6,0.5,0.6,DARK,0.6,1.15,0,0.06);box(g,0.5,0.5,0.5,SEAT,0.4,1.55,0.0);cylY(g,0.03,0.5,DARK,1.0,1.6,0,6);
   rail(g,[[1.3,0.9,0],[1.6,0.5,0],[1.65,0.2,0]],0.03,DARK);cylY(g,0.06,0.15,M(0xf2c230),1.65,0.12,0,8);
@@ -1257,7 +1252,7 @@ function buildFigure(vest){const g=new THREE.Group();const V=vest||VEST;
   const helm=new THREE.Mesh(new THREE.SphereGeometry(0.135,14,8,0,PI*2,0,PI/2),HELMET);helm.position.y=1.71;helm.scale.set(1.05,0.85,1);helm.castShadow=true;g.add(helm);
   box(g,0.04,0.03,0.18,BLACK,0.09,1.62,0);
   return {g,legs,arms,walk:0}}
-function animFigure(f,dist,pose){f.walk+=dist*3.2;const s=Math.sin(f.walk);const amp=pose==='stand'?0:0.5;
+function animFigure(f,dist,pose){f.walk+=dist*3.2/CREW_H;const s=Math.sin(f.walk);const amp=pose==='stand'?0:0.5;
   f.legs[0].rotation.z=s*amp;f.legs[1].rotation.z=-s*amp;
   if(pose==='wave'){f.arms[0].rotation.z=0;f.arms[1].rotation.x=-2.5+Math.sin(performance.now()/180)*0.4}
   else if(pose==='hold'){f.arms[0].rotation.z=0.9;f.arms[1].rotation.z=0.9;f.arms[0].rotation.x=f.arms[1].rotation.x=0}
@@ -1279,11 +1274,18 @@ function buildJet(){const g=new THREE.Group();const gm=paint(0x7c868d,{metalness
   return {g,ab,gear}}
 
 const builders={eod:buildEOD,loader:buildLoader,dump:buildDump,saw:buildSaw,excavator:buildExcavator,roller:buildRoller,mixer:buildMixer,sweeper:buildSweeper,painter:buildPainter};
-EQ_ORDER.forEach(k=>{const o=builders[k]();Object.assign(EQ[k],o);EQ[k].wheels=o.wheels||[];o.g.userData.eq=k;o.g.traverse(m=>{m.userData.eq=k});scene.add(o.g);EQ[k].prev=null;EQ[k].spd=0});
+EQ_ORDER.forEach(k=>{const o=builders[k]();o.g.scale.setScalar(EQ[k].scale);o.g.visible=!EQ[k].off;Object.assign(EQ[k],o);EQ[k].wheels=o.wheels||[];o.g.userData.eq=k;o.g.traverse(m=>{m.userData.eq=k});scene.add(o.g);EQ[k].prev=null;EQ[k].spd=0});
 const CREW=[];
-const crewMeasure=[buildFigure(),buildFigure()];const crewSignal=buildFigure(new THREE.MeshStandardMaterial({color:C(0xc8e83a),roughness:.7,emissive:C(0x1a2000)}));
-const crewFinish=[buildFigure(),buildFigure()];
-[...crewMeasure,crewSignal,...crewFinish].forEach(c=>{c.g.visible=false;c.g.traverse(m=>{if(m.isMesh){m.castShadow=true}});scene.add(c.g);CREW.push(c)});
+const CRW=CFG.crew||{};const crewGrp=g=>CRW[g]||{};
+const CREW_H=num(CRW.height,1,0.6,1.6),CREW_WALK=num(CRW.walk,1,0.2,3);
+const vestMat=(hex,d,em)=>new THREE.MeshStandardMaterial({color:C(hexOf(hex,d)),roughness:.7,emissive:C(em),envMapIntensity:.6});
+const nCrew=(g,d,mx)=>Math.round(num(crewGrp(g).count,d,0,mx));
+const crewMeasure=Array.from({length:nCrew('measure',2,6)},()=>buildFigure(vestMat(crewGrp('measure').vest,0xf0782a,0x301000)));
+const crewSignals=Array.from({length:nCrew('signal',1,4)},()=>buildFigure(vestMat(crewGrp('signal').vest,0xc8e83a,0x1a2000)));
+const crewFinish=Array.from({length:nCrew('finish',2,8)},()=>buildFigure(vestMat(crewGrp('finish').vest,0xf0782a,0x301000)));
+const crewSignal=crewSignals[0]||null;
+[...crewMeasure,...crewSignals,...crewFinish].forEach(c=>c.g.scale.setScalar(CREW_H));
+[...crewMeasure,...crewSignals,...crewFinish].forEach(c=>{c.g.visible=false;c.g.traverse(m=>{if(m.isMesh){m.castShadow=true}});scene.add(c.g);CREW.push(c)});
 const screed=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.08,1),M(0xb8bcbe,{metalness:.8,roughness:.3}));screed.castShadow=true;screed.visible=false;scene.add(screed);
 const crew=crewMeasure;
 const jet=buildJet();jet.g.visible=false;scene.add(jet.g);
@@ -1306,32 +1308,33 @@ function pose(path,t){
       return {x:lerp(k0.x,k1.x,e),z:lerp(k0.z,k1.z,e),a,mv:k0.mv,rv:k0.rv}}}
   const L=path[path.length-1];return {x:L.x,z:L.z,a:L.ha,mv:false,rv:false}}
 const LANE=28;
-function trip(k,t0,t1,work){const p=EQ[k].park;return [{t:t0,x:p.x,z:p.z},{t:t0+1.0,x:p.x,z:LANE},...work,{t:t1-1.0,x:p.x,z:LANE},{t:t1,x:p.x,z:p.z,rev:true}]}
+function trip(k,t0,t1,work){const p=EQ[k].park;if(t1-t0<2.5)return [];return [{t:t0,x:p.x,z:p.z},{t:t0+1.0,x:p.x,z:LANE},...work,{t:t1-1.0,x:p.x,z:LANE},{t:t1,x:p.x,z:p.z,rev:true}]}
 function buildPaths(){
   const {R,S}=SC;const Ps={};
   const start=k=>[{t:0,x:EQ[k].park.x,z:EQ[k].park.z}];
+  const seq=(k,...trips)=>start(k).concat(...trips.filter(a=>a.length).sort((a,b)=>a[0].t-b[0].t));
   const at=(i,u,x,z,o)=>Object.assign({t:P(i,u),x,z},o||{});
-  Ps.eod=start('eod').concat(trip('eod',P(1,0),P(1,1),[at(1,.17,-S-11,5),at(1,.84,-S-11,5)]));
+  Ps.eod=seq('eod',trip('eod',P(1,0),P(1,1),[at(1,.17,-S-11,5),at(1,.84,-S-11,5)]));
   const z1=-0.35*R,z2=0.35*R,xl=-S-7,xr=S+7;
-  Ps.loader=start('loader').concat(trip('loader',P(2,0),P(2,1),[
+  Ps.loader=seq('loader',trip('loader',P(2,0),P(2,1),[
     at(2,.10,xl,z1),at(2,.16,-R-3.4,z1),at(2,.23,xl,z2,{rev:true}),at(2,.29,-R-3.4,z2),at(2,.36,xl,0,{rev:true}),
     at(2,.42,xl,S+6),at(2,.48,xr,S+6),at(2,.54,xr,z1),at(2,.60,R+3.4,z1),at(2,.67,xr,z2,{rev:true}),at(2,.74,R+3.4,z2),at(2,.82,xr,0,{rev:true}),at(2,.86,xr,S+6)]),
     trip('loader',P(5,.48),P(5,1),[
     at(5,.54,-S-8,-S*0.4),at(5,.60,-S-4.4,-S*0.4),at(5,.66,-S-8,0,{rev:true}),at(5,.72,-S-4.4,0),at(5,.78,-S-8,S*0.4,{rev:true}),at(5,.84,-S-4.4,S*0.4),at(5,.9,-S-8,S*0.4,{rev:true})]));
   const exZ=-(S+3.2),xA=-0.45*S,xB=0.45*S;
-  Ps.dump=start('dump').concat(
+  Ps.dump=seq('dump',
     trip('dump',P(2,0),P(2,1),[at(2,.12,-S-12,-S-6),at(2,.88,-S-12,-S-6)]),
     trip('dump',P(4,0),P(4,1),[at(4,.08,xA-6.5,exZ),at(4,.48,xA-6.5,exZ),at(4,.53,xB-6.5,exZ),at(4,.92,xB-6.5,exZ)]),
     trip('dump',P(5,0),P(5,.56),[at(5,.08,-S-15,0),at(5,.15,-S-4.6,0,{rev:true}),at(5,.42,-S-4.6,0),at(5,.48,-S-12,-3)]));
-  Ps.saw=start('saw').concat(trip('saw',P(3,0),P(3,1),[at(3,.09,-S-1.5,-S),at(3,.12,-S,-S),at(3,.31,S,-S,{lin:true}),at(3,.50,S,S,{lin:true}),at(3,.69,-S,S,{lin:true}),at(3,.88,-S,-S,{lin:true}),at(3,.92,-S-2,-S-2)]));
-  Ps.excavator=start('excavator').concat(trip('excavator',P(4,0),P(4,1),[at(4,.06,xA,exZ),at(4,.08,xA,exZ,{a:-PI/2}),at(4,.47,xA,exZ),at(4,.49,xA,exZ,{a:0}),at(4,.52,xB,exZ),at(4,.54,xB,exZ,{a:-PI/2}),at(4,.92,xB,exZ)]));
-  Ps.roller=start('roller').concat(trip('roller',P(6,0),P(6,1),[at(6,.1,-S-4,-S*0.55),at(6,.28,S-2,-S*0.55),at(6,.42,-S-4,0,{rev:true}),at(6,.58,S-2,0),at(6,.72,-S-4,S*0.55,{rev:true}),at(6,.88,S-2,S*0.55),at(6,.92,S+3,S+3)]));
+  Ps.saw=seq('saw',trip('saw',P(3,0),P(3,1),[at(3,.09,-S-1.5,-S),at(3,.12,-S,-S),at(3,.31,S,-S,{lin:true}),at(3,.50,S,S,{lin:true}),at(3,.69,-S,S,{lin:true}),at(3,.88,-S,-S,{lin:true}),at(3,.92,-S-2,-S-2)]));
+  Ps.excavator=seq('excavator',trip('excavator',P(4,0),P(4,1),[at(4,.06,xA,exZ),at(4,.08,xA,exZ,{a:-PI/2}),at(4,.47,xA,exZ),at(4,.49,xA,exZ,{a:0}),at(4,.52,xB,exZ),at(4,.54,xB,exZ,{a:-PI/2}),at(4,.92,xB,exZ)]));
+  Ps.roller=seq('roller',trip('roller',P(6,0),P(6,1),[at(6,.1,-S-4,-S*0.55),at(6,.28,S-2,-S*0.55),at(6,.42,-S-4,0,{rev:true}),at(6,.58,S-2,0),at(6,.72,-S-4,S*0.55,{rev:true}),at(6,.88,S-2,S*0.55),at(6,.92,S+3,S+3)]));
   const mz=S+3.2;
-  Ps.mixer=start('mixer').concat(trip('mixer',P(7,0),P(7,1),[at(7,.09,-S+3,mz),at(7,.12,-S+3,mz,{a:0}),at(7,.88,S+3,mz,{lin:true}),at(7,.92,S+8,mz+2)]));
+  Ps.mixer=seq('mixer',trip('mixer',P(7,0),P(7,1),[at(7,.09,-S+3,mz),at(7,.12,-S+3,mz,{a:0}),at(7,.88,S+3,mz,{lin:true}),at(7,.92,S+8,mz+2)]));
   const rows=[-S*0.75-1,-S*0.25,S*0.25,S*0.75+1],xs=-S-8,xe=S+8;const sw=[];
   rows.forEach((z,i)=>{const a=.08+i*.21,b=a+.17;const [p,q]=i%2?[xe,xs]:[xs,xe];sw.push(at(9,a,p,z),at(9,b,q,z,{lin:true}))});
-  Ps.sweeper=start('sweeper').concat(trip('sweeper',P(9,0),P(9,1),sw));
-  Ps.painter=start('painter').concat(trip('painter',P(10,0),P(10,.58),[at(10,.07,-S-6,0),at(10,.1,-S-3,0),at(10,.45,S+3,0,{lin:true}),at(10,.49,S+8,4)]));
+  Ps.sweeper=seq('sweeper',trip('sweeper',P(9,0),P(9,1),sw));
+  Ps.painter=seq('painter',trip('painter',P(10,0),P(10,.58),[at(10,.07,-S-6,0),at(10,.1,-S-3,0),at(10,.45,S+3,0,{lin:true}),at(10,.49,S+8,4)]));
   EQ_ORDER.forEach(k=>{EQ[k].path=prepPath(Ps[k],EQ[k].park.a);EQ[k].prev=null});
 }
 
@@ -1359,8 +1362,9 @@ const labelsEl=document.getElementById('labels');
 function mkLabel(cls,text){const d=document.createElement('div');d.className='lbl '+cls;d.textContent=text;labelsEl.appendChild(d);return d}
 EQ_ORDER.forEach(k=>{EQ[k].lbl=mkLabel('',EQ[k].short)});
 const jetLbl=mkLabel('active','항공기 이륙 · 운용 재개');
-const crewLbl=mkLabel('','측정 요원');
-const sigLbl=mkLabel('','신호수');
+const crewLbl=mkLabel('',str(crewGrp('measure').label,'측정 요원'));
+const sigLbl=mkLabel('',str(crewGrp('signal').label,'신호수'));
+const finLbl=mkLabel('',str(crewGrp('finish').label,'마감 요원'));
 const zoneLbl=mkLabel('zone','장비 대기 지역');
 const DL={dia:mkLabel('dim d-amber',''),depth:mkLabel('dim d-cyan',''),up:mkLabel('dim d-white',''),sq:mkLabel('dim d-white','')};
 const v3=new THREE.Vector3();
@@ -1387,7 +1391,7 @@ function audioInit(){
   const wind=loop(SND.brown,420);wind.g.gain.value=0.05;wind.g.connect(master);SND.wind=wind;
   // one engine voice per vehicle: sawtooth + sub + filtered rumble, stereo panned
   EQ_ORDER.forEach(k=>{const o1=ctx.createOscillator();o1.type='sawtooth';const o2=ctx.createOscillator();o2.type='square';
-    const base={eod:70,loader:44,dump:40,saw:95,excavator:42,roller:38,mixer:41,sweeper:55,painter:85}[k];o1.frequency.value=base;o2.frequency.value=base*0.5;
+    const base=EQ[k].sound;o1.frequency.value=base;o2.frequency.value=base*0.5;
     const r=loop(SND.brown,300);const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=480;lp.Q.value=1.5;
     const g1=ctx.createGain();g1.gain.value=0.35;const g2=ctx.createGain();g2.gain.value=0.2;r.g.gain.value=1;
     o1.connect(g1);o2.connect(g2);g1.connect(lp);g2.connect(lp);r.g.connect(lp);
@@ -1425,7 +1429,7 @@ const _cv=new THREE.Vector3();
 function updateAudio(dt){if(!SND.ctx||!SND.on)return;const c=SND.ctx,now=c.currentTime;const live=playing&&!scrubbing;const i=phaseAt(t);
   const camR=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0);let beepNeed=0;
   EQ_ORDER.forEach(k=>{const e=EQ[k],v=SND.eng[k];if(!v)return;const parked=Math.abs(e.pos.z-e.park.z)<0.5&&Math.abs(e.pos.x-e.park.x)<0.5;
-    const work=e.work||0;let lvl=parked?0:0.35+Math.min(1,e.spd/4)*0.45+work*0.4;if(!live)lvl*=0.0;
+    const work=e.work||0;let lvl=(parked||e.off)?0:0.35+Math.min(1,e.spd/4)*0.45+work*0.4;if(!live)lvl*=0.0;
     _cv.copy(e.g.position);const d=_cv.distanceTo(camera.position);const att=1/(1+d/18);
     v.out.gain.setTargetAtTime(lvl*att*0.32,now,0.15);const f=v.base*(1+Math.min(1,e.spd/5)*0.35+work*0.25)*(0.85+0.15*Math.min(speed,2));
     v.o1.frequency.setTargetAtTime(f,now,0.2);v.o2.frequency.setTargetAtTime(f*0.5,now,0.2);v.lp.frequency.setTargetAtTime(380+lvl*600,now,0.2);
@@ -1440,7 +1444,8 @@ function updateAudio(dt){if(!SND.ctx||!SND.on)return;const c=SND.ctx,now=c.curre
 }
 
 // ---------- state & UI ----------
-let t=0,playing=true,speed=1,showDims=true,showLabels=true,autoCam=true,selected=null,follow=false,zoomMul=1,scrubbing=false,mode='learn';
+const ANM=CFG.anim||{};
+let t=0,playing=true,speed=[0.5,1,2,4].includes(+ANM.speed)?+ANM.speed:1,showDims=ANM.dims!==false,showLabels=ANM.labels!==false,autoCam=true,selected=null,follow=false,zoomMul=1,scrubbing=false,mode='learn';
 const $=id=>document.getElementById(id);
 const BODY=document.body;
 let lastAct=performance.now();const kick=()=>{lastAct=performance.now()};
@@ -1453,50 +1458,50 @@ function jump(i,u){t=PH[i].s+(u?u*PH[i].d:0.001);lastKey='';if(autoCam)camSnap=t
 let curPhase=-1;
 function renderPhaseCard(i){const p=PH[i];
   $('phStep').textContent=`단계 ${String(i).padStart(2,'0')} / ${String(PH.length-1).padStart(2,'0')} · ${p.en}`;
-  $('phTitle').textContent=p.title;$('phReal').textContent=`소요 ${p.real}분 · 누적 T+${hm(p.rs)}~${hm(p.rs+p.real)}`;
+  $('phTitle').textContent=p.title;$('phReal').textContent=`소요 ${p.real}분${p.crew?` · 인원 ${p.crew}명`:''} · 누적 T+${hm(p.rs)}~${hm(p.rs+p.real)}`;
   $('phGoal').textContent=p.goal;$('phSteps').innerHTML=p.steps.map(s=>`<li>${s}</li>`).join('');$('mLabel').textContent=p.m;
   const ch=$('phEquip');ch.innerHTML='';
-  if(!p.equip.length){const s=document.createElement('span');s.className='none';s.textContent=i===0?'모든 장비가 대기 지역에서 출동 준비':'투입 장비 없음 · 표면 보호 중';ch.appendChild(s)}
-  p.equip.forEach(k=>{const b=document.createElement('button');b.textContent=EQ[k].name;b.onclick=()=>select(k,true);ch.appendChild(b)});
+  if(!p.equip.length){const s=document.createElement('span');s.className='none';s.textContent=p.bi===0?'모든 장비가 대기 지역에서 출동 준비':'투입 장비 없음 · 표면 보호 중';ch.appendChild(s)}
+  p.equip.forEach(k=>{const b=document.createElement('button');b.textContent=EQ[k].name;b.dataset.k=k;b.onclick=()=>select(k,true);ch.appendChild(b)});
   PH.forEach((q,j)=>{q.li.classList.toggle('cur',j===i);q.li.classList.toggle('done',j<i);q.sg.classList.toggle('cur',j===i)});
 }
 function renderDims(){const {R,D,upR,S,slab,cap}=SC;const sw=c=>`<span class="sw" style="background:${c}"></span>`;
   $('dimTable').innerHTML=[
     [sw('#f0b429')+'겉보기 직경',fmt(R*2)+' m'],[sw('#5cc8e0')+'깊이 (원지반 기준)',fmt(D)+' m'],[sw('#ffffff')+'융기부 직경',fmt(upR*2)+' m'],
     [sw('#ffffff')+'절단 규격 (정사각형)',`${fmt(2*S)} × ${fmt(2*S)} m`],['절단 총연장',fmt(SC.perim)+' m'],['파쇄 포장 제거량 (약)',fmt(SC.removeVol)+' m³'],
-    ['되메움 골재량 (약)',fmt(SC.fillVol)+' m³'],['급속경화 콘크리트 (두께 '+fmt(cap,2)+' m)',fmt(SC.concVol)+' m³'],['기존 슬래브 두께',fmt(slab,2)+' m']
+    ['되메움 '+MTH.fillMaterial+' (약)',fmt(SC.fillVol)+' m³'],[MTH.capMaterial+' (두께 '+fmt(cap,2)+' m)',fmt(SC.concVol)+' m³'],['기존 슬래브 두께',fmt(slab,2)+' m']
   ].map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
   DL.dia.textContent=`겉보기 직경 ${fmt(R*2)} m`;DL.depth.textContent=`깊이 ${fmt(D)} m`;DL.up.textContent=`융기부 Ø${fmt(upR*2)} m`;
 }
-function meter(i){const {perim,concVol}=SC;let v=0,txt='';
-  switch(i){
+function meter(i){const {perim,concVol}=SC;const p=PH[i];let v=0,txt='';
+  switch(p.bi){
    case 0:v=clamp(phU(0,t),0,1);txt=t<T_BLAST?'경보 발령':'탄착 확인 · 운용 중지';break;
    case 1:v=clamp(phU(1,t),0,1);txt=ST.measure<=0?'UXO 탐지 중':ST.measure<1?'치수 측정 중':'MOS 선정 완료';break;
    case 2:v=1-debris.count/DEB.length;txt=Math.round(v*100)+'%';break;
    case 3:v=ST.cut/4;txt=`${fmt(v*perim)} / ${fmt(perim)} m`;break;
    case 4:v=ST.exc;txt=Math.round(v*100)+'%';break;
    case 5:v=ST.fill;txt=ST.fill>0?`표면 ${fmt(ST.fillTop,2)} m`:'골재 투하';break;
-   case 6:v=ST.comp;txt=`${Math.min(3,Math.floor(ST.comp*3)+(ST.comp>0?1:0))} / 3 패스`;break;
+   case 6:v=ST.comp;txt=`${Math.min(MTH.passes,Math.floor(ST.comp*MTH.passes)+(ST.comp>0?1:0))} / ${MTH.passes} 패스`;break;
    case 7:v=ST.conc;txt=`${fmt(v*concVol)} / ${fmt(concVol)} m³`;break;
-   case 8:v=ST.cure;txt=`${Math.round(v*60)} / 60분`;break;
+   case 8:v=ST.cure;txt=`${Math.round(v*A[8].real)} / ${A[8].real}분`;break;
    case 9:v=ST.sweep;txt=Math.round(v*100)+'%';break;
-   case 10:v=winU(10,t,.1,1);txt=ST.mark<1?'도색 '+Math.round(ST.mark*100)+'%':(phU(10,t)>.55?'이륙 · 운용 재개':'최종 점검');break}
+   case 10:v=winU(10,t,.1,1);txt=ST.mark<1?'도색 '+Math.round(ST.mark*100)+'%':(phU(10,t)>.55?'이륙 · 운용 재개':'최종 점검');break;
+   default:v=clamp(phUi(i,t),0,1);txt=Math.round(v*100)+'%'}
   $('mVal').textContent=txt;$('mBar').style.width=(clamp(v,0,1)*100)+'%'}
 
 function select(k,focus){selected=k;const e=EQ[k];$('eqCard').hidden=false;$('eqName').textContent=e.name;$('eqRole').textContent=e.role;
   $('eqSpecs').innerHTML=`<tr><td>영문 명칭</td><td>${e.en}</td></tr>`+e.specs.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')+'<tr><td colspan="2" style="text-align:left;font-family:var(--sans);color:var(--muted);font-size:12px;padding-top:8px">제원은 교육용 대표값이며 실제 장비와 다를 수 있습니다.</td></tr>';
   if(focus){follow=true;setAuto(false)}$('eqFollow').classList.toggle('on',follow);setPanel('info',true);setPanel('ui',true);$('info').scrollTop=0;
-  if(!PG.eq.includes(k)){PG.eq.push(k);save();addXP(10,`${e.short} 제원 확인`);if(PG.eq.length>=EQ_ORDER.length)award('eq')}}
+  if(!PG.eq.includes(k)){PG.eq.push(k);save();addXP(10,`${e.short} 제원 확인`);if(EQ_ON.every(x=>PG.eq.includes(x)))award('eq')}}
 $('eqClose').onclick=()=>{selected=null;follow=false;$('eqCard').hidden=true};
 $('eqFollow').onclick=()=>{follow=!follow;if(follow)setAuto(false);$('eqFollow').classList.toggle('on',follow)};
 
 function setScenario(key){SC=makeScenario(key);precomputePatch();buildDebris();buildPaths();buildDims();renderDims();lastKey='';kick();
   document.querySelectorAll('#sizeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.size===key))}
-document.querySelectorAll('#sizeSeg button').forEach(b=>b.onclick=()=>setScenario(b.dataset.size));
 document.querySelectorAll('#speedSeg button').forEach(b=>b.onclick=()=>{speed=+b.dataset.sp;document.querySelectorAll('#speedSeg button').forEach(x=>x.classList.toggle('on',x===b))});
 function setPlay(p){playing=p;if(p&&t>=TT-0.01)t=0;$('playIc').innerHTML=p?'<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>':'<path d="M7 4l13 8-13 8z"/>';kick()}
 $('play').onclick=()=>setPlay(!playing);
-$('prev').onclick=()=>{const i=phaseAt(t);jump(phU(i,t)>0.15||i===0?i:i-1)};
+$('prev').onclick=()=>{const i=phaseAt(t);jump(phUi(i,t)>0.15||i===0?i:i-1)};
 $('next').onclick=()=>{const i=phaseAt(t);if(i<PH.length-1)jump(i+1)};
 function setAuto(on){autoCam=on;$('camAuto').classList.toggle('on',on);if(on){follow=false;$('eqFollow').classList.remove('on');zoomMul=1;camSnap=false}}
 $('camAuto').onclick=()=>setAuto(!autoCam);
@@ -1554,7 +1559,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{downXY=[e.clientX,e.clien
 renderer.domElement.addEventListener('pointerup',e=>{if(!downXY)return;const d=Math.hypot(e.clientX-downXY[0],e.clientY-downXY[1]);downXY=null;if(d>8)return;
   const r=renderer.domElement.getBoundingClientRect();mv2.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
   camera.updateMatrixWorld();ray.setFromCamera(mv2,camera);
-  const hits=ray.intersectObjects(EQ_ORDER.map(k=>EQ[k].g),true);const k=hits.length?hits[0].object.userData.eq:null;
+  const hits=ray.intersectObjects(EQ_ON.map(k=>EQ[k].g),true);const k=hits.length?hits[0].object.userData.eq:null;
   if(mode==='quiz'){if(QZ&&!QZ.answered&&QZ.list[QZ.i].find&&k)answerFind(k);return}
   if(k)select(k,false)});
 
@@ -1562,80 +1567,44 @@ renderer.domElement.addEventListener('pointerup',e=>{if(!downXY)return;const d=M
 const LV=[0,100,250,450,700,1000,1400,1900];
 const LVT=['훈련병','이등 복구요원','일등 복구요원','복구 분대원','복구 반장','복구 전문가','RADR 교관','RADR 마스터'];
 const BADGES=[
- {id:'first',ic:'①',n:'첫 단계 이수',d:'한 단계를 끝까지 학습'},{id:'all',ic:'★',n:'전 과정 이수',d:'11단계 모두 학습'},
- {id:'eq',ic:'⚙',n:'장비 박사',d:'장비 9종 제원 모두 확인'},{id:'quiz',ic:'✎',n:'첫 평가',d:'평가를 한 번 완료'},
+ {id:'first',ic:'①',n:'첫 단계 이수',d:'한 단계를 끝까지 학습'},{id:'all',ic:'★',n:'전 과정 이수',d:`${PH.length}단계 모두 학습`},
+ {id:'eq',ic:'⚙',n:'장비 박사',d:`장비 ${EQ_ON.length}종 제원 모두 확인`},{id:'quiz',ic:'✎',n:'첫 평가',d:'평가를 한 번 완료'},
  {id:'pass',ic:'✓',n:'종합 평가 합격',d:'종합 평가 70% 이상'},{id:'perfect',ic:'◆',n:'만점',d:'평가에서 모두 정답'},
  {id:'streak',ic:'⚡',n:'5연속 정답',d:'한 번에 5문제 연속 정답'},{id:'fast',ic:'⏱',n:'빠른 판단',d:'5초 안에 정답'},
  {id:'english',ic:'A',n:'영어 용어 마스터',d:'영어 퀴즈 80% 이상'},{id:'eye',ic:'◎',n:'매의 눈',d:'장비 찾기 모두 정답'},
  {id:'ai',ic:'?',n:'질문하는 학습자',d:'AI 교관에게 3번 질문'}];
 let PG=Object.assign({xp:0,learned:[],eq:[],badges:[],hist:[],name:'',ai:0,best:{}},store.get('radr.pg',{}));
+PG.learned=PG.learned.map(x=>typeof x==='number'?PH_IDS[x]:x).filter(Boolean);
+const isLearned=i=>PG.learned.includes(PH[i].id);
 const watched=new Float32Array(PH.length);
 function save(){store.set('radr.pg',PG)}
 function level(x){let l=0;for(let i=0;i<LV.length;i++)if(x>=LV[i])l=i;return l}
 function renderLvl(){const l=level(PG.xp);const a=LV[l],b=LV[l+1];$('lvN').textContent='Lv.'+(l+1);$('lvT').textContent=LVT[l];$('lvX').textContent=PG.xp+' XP';
-  $('lvB').style.width=(b?clamp((PG.xp-a)/(b-a),0,1)*100:100)+'%';PH.forEach((p,i)=>p.li.classList.toggle('learned',PG.learned.includes(i)))}
+  $('lvB').style.width=(b?clamp((PG.xp-a)/(b-a),0,1)*100:100)+'%';PH.forEach((p,i)=>p.li.classList.toggle('learned',isLearned(i)))}
 function toast(html){const d=document.createElement('div');d.className='toast';d.innerHTML=html;$('toasts').appendChild(d);while($('toasts').children.length>3)$('toasts').firstChild.remove();
   setTimeout(()=>{d.classList.add('out');setTimeout(()=>d.remove(),400)},2600)}
 function addXP(n,why){const l0=level(PG.xp);PG.xp+=n;save();toast(`<b>+${n} XP</b> · ${why}`);const l1=level(PG.xp);if(l1>l0){sfx.level();toast(`레벨 업! <b>Lv.${l1+1} ${LVT[l1]}</b>`)}renderLvl()}
 function award(id){if(PG.badges.includes(id))return false;PG.badges.push(id);save();const b=BADGES.find(x=>x.id===id);sfx.badge();toast(`배지 획득 · <b>${b.n}</b>`);return true}
-function trackLearning(dt){if(mode==='quiz'||!playing||scrubbing)return;const i=phaseAt(t);if(PG.learned.includes(i))return;watched[i]+=dt*speed;
-  if(watched[i]>=PH[i].dur*0.8){PG.learned.push(i);save();addXP(20,`${PH[i].title} 학습`);award('first');if(PG.learned.length>=PH.length&&award('all'))addXP(50,'전 과정 이수')}}
+function trackLearning(dt){if(mode==='quiz'||!playing||scrubbing)return;const i=phaseAt(t);if(isLearned(i))return;watched[i]+=dt*speed;
+  if(watched[i]>=PH[i].dur*0.8){PG.learned.push(PH[i].id);save();addXP(20,`${PH[i].title} 학습`);award('first');if(PH.every((q,j)=>isLearned(j))&&award('all'))addXP(50,'전 과정 이수')}}
 
 // ---------- quiz ----------
-const QBANK=[
- {c:'절차',q:'피해가 발생한 뒤 현장에서 가장 먼저 해야 하는 일은?',o:['불발탄(UXO) 확인과 피해평가','포장 절단','되메우기','콘크리트 타설'],ph:1,ex:'불발탄이 남아 있으면 모든 작업이 위험합니다. EOD팀이 먼저 확인하고 크레이터를 측정합니다.'},
- {c:'절차',q:'포장 절단이 끝나면 다음 단계는?',o:['파손부 굴착','양생','FOD 청소','표지 복구'],ph:4,sc:3,ex:'절단선 안쪽의 깨진 슬래브와 융기된 흙을 굴삭기로 걷어냅니다.'},
- {c:'절차',q:'되메우기 바로 다음에 하는 작업은?',o:['다짐','양생','포장 절단','파편 제거'],ph:6,sc:5,ex:'쇄석 골재를 채운 뒤 진동롤러로 다져야 항공기 하중에 침하하지 않습니다.'},
- {c:'절차',q:'급속경화 콘크리트를 타설한 다음 단계는?',o:['양생','다짐','굴착','피해평가'],ph:8,sc:7,ex:'강도가 나올 때까지 표면을 보호하며 양생합니다(예시: 약 60분).'},
- {c:'절차',q:'항공기 운용을 재개하기 직전의 마지막 작업은?',o:['중심선 표지 복구와 최종 점검','되메우기','포장 절단','피해평가'],ph:10,ex:'중심선을 다시 칠하고 최종 점검 후 관제에 보고한 뒤 운용을 재개합니다.'},
- {c:'절차',q:'다짐을 하는 가장 큰 이유는?',o:['항공기 하중에 의한 침하를 막기 위해','콘크리트를 빨리 굳히기 위해','불발탄을 찾기 위해','표지를 칠하기 쉽게 하려고'],ph:6,ex:'되메움 층의 빈틈을 없애야 반복되는 항공기 하중에도 표면이 내려앉지 않습니다.'},
- {c:'절차',q:'손상 포장 경계를 정사각형으로 자르는 이유는?',o:['깨끗한 수직면으로 새 콘크리트와 하중을 잘 주고받게 하려고','작업 시간을 늘리려고','배수를 좋게 하려고','미관을 좋게 하려고'],ph:3,ex:'불규칙한 깨진 면 대신 반듯한 수직 절단면을 만들어야 보수부와 기존 슬래브가 하중을 고르게 나눕니다.'},
- {c:'절차',q:'FOD 청소가 꼭 필요한 이유는?',o:['작은 이물질이 항공기 엔진에 빨려 들어갈 수 있어서','콘크리트 양생을 돕기 위해','표지 도색을 쉽게 하려고','다짐 효과를 높이려고'],ph:9,ex:'작은 돌 하나도 제트 엔진을 손상시킬 수 있어 청소차와 도보 점검으로 제거합니다.'},
- {c:'절차',q:'파편 제거 단계의 목적은?',o:['장비가 들어갈 공간과 진입로 확보','크레이터 깊이 측정','중심선 도색','콘크리트 배합'],ph:2,ex:'큰 콘크리트 파편을 치워야 이후 절단·굴착 장비가 접근할 수 있습니다.'},
- {c:'장비',q:'되메움 층을 진동으로 다지는 장비는?',o:['진동롤러','휠로더','굴삭기','노면청소차'],ph:6,ex:'진동롤러가 겹치게 왕복하며 골재 층을 다집니다.'},
- {c:'장비',q:'시멘트·골재·물을 따로 싣고 와 현장에서 배합하는 장비는?',o:['부피계량식 믹서트럭','덤프트럭','차선도색기','휠로더'],ph:7,ex:'부피계량식 믹서는 현장에서 연속 계량·배합하므로 급속경화 콘크리트에 적합합니다.'},
- {c:'장비',q:'절단선 안쪽의 깨진 슬래브를 파내는 장비는?',o:['굴삭기','진동롤러','콘크리트 절단기','노면청소차'],ph:4,ex:'굴삭기가 버킷(필요하면 유압 브레이커)으로 파쇄·제거하고 덤프트럭에 싣습니다.'},
- {c:'장비',q:'포장 경계를 습식 다이아몬드 블레이드로 자르는 장비는?',o:['콘크리트 절단기','굴삭기','휠로더','차선도색기'],ph:3,ex:'절단기는 물을 뿌리며 다이아몬드 블레이드로 슬래브 전체 두께를 자릅니다.'},
- {c:'장비',q:'큰 파편을 밀어내고 되메움 골재를 펴는 장비는?',o:['휠로더','진동롤러','믹서트럭','EOD 차량'],ph:2,ex:'휠로더는 파편 제거와 골재 펴기에 모두 쓰입니다.'},
- {c:'장비',q:'가장 먼저 현장에 들어가는 차량은?',o:['EOD·피해평가 차량','덤프트럭','진동롤러','노면청소차'],ph:1,ex:'불발탄 처리 요원과 측정 요원이 먼저 들어가 안전을 확보합니다.'},
- {c:'수치',q:'이 시뮬레이션에서 급속경화 콘크리트 층 두께는?',o:['0.30 m','0.05 m','0.90 m','1.50 m'],ph:7,ex:'되메움을 표면 아래 약 0.30 m까지 채우고 그 위를 콘크리트로 덮습니다(교육용 예시).'},
- {c:'수치',q:'절단선은 융기부 바깥 최소 몇 m에 설정하나요? (교육용 예시)',o:['0.4 m 이상','4 m 이상','0.04 m 이상','10 m 이상'],ph:3,ex:'융기·균열이 남지 않도록 융기부 바깥 0.4 m 이상에서 자릅니다(예시값).'},
- {c:'수치',q:'MOS(최소운영활주로) 예시 규격은?',o:['폭 15 m × 길이 1,525 m','폭 1.5 m × 길이 152 m','폭 150 m × 길이 15 m','폭 45 m × 길이 45 m'],ph:1,ex:'항공기가 이착륙할 수 있는 최소 구간을 먼저 정하고 그 안의 크레이터부터 복구합니다.'},
- {c:'수치',q:'기존 콘크리트 슬래브 두께(예시)는 약?',o:['0.45 m','4.5 m','0.045 m','1.2 m'],ph:4,ex:'굴착은 슬래브 두께(약 0.45 m)까지 걷어내는 것이 기준입니다(예시).'},
- {c:'수치',q:'이 시뮬레이션의 양생 시간(예시)은?',o:['약 60분','약 5분','약 6시간','약 3일'],ph:8,ex:'급속경화 재료는 종류에 따라 약 1~2시간 안에 운용 강도에 도달합니다(예시).'},
- {c:'용어',q:'MOS의 뜻은?',o:['최소운영활주로','주요 작전 시설','기동 장비 정비소','이동식 관측소'],ph:1,ex:'Minimum Operating Strip. 항공기 운용에 꼭 필요한 최소 활주 구간입니다.'},
- {c:'용어',q:'되메우기에 사용하는 재료는?',o:['쇄석 골재','아스팔트 유제','흙과 물','강철판'],ph:5,ex:'입도가 고른 쇄석 골재가 다짐 후 단단한 지지층이 됩니다.'},
- {c:'용어',q:'"융기부"란 무엇인가요?',o:['폭발로 크레이터 주변 포장이 솟아오른 부분','크레이터 바닥','새로 친 콘크리트','장비 대기 지역'],ph:1,ex:'융기부까지 손상된 것으로 보고 그 바깥에서 절단해야 합니다.'}
-];
-const QEN=[
- {c:'영어',q:'What does "FOD" stand for?',o:['Foreign Object Debris','Field Operation Duty','Fast Overlay Drying','Fuel Over Discharge'],ph:9,ex:'FOD = Foreign Object Debris(이물질). 엔진에 빨려 들어가 손상을 일으킬 수 있습니다.'},
- {c:'영어',q:'What does "UXO" mean?',o:['Unexploded Ordnance','Under eXcavation Operation','Unit eXchange Order','Upper eXit Opening'],ph:1,ex:'UXO = Unexploded Ordnance(불발탄).'},
- {c:'영어',q:'In airfield repair, "MOS" is the…',o:['Minimum Operating Strip','Main Operations Station','Mobile Overlay System','Maximum Operating Speed'],ph:1,ex:'MOS = Minimum Operating Strip(최소운영활주로).'},
- {c:'영어',q:'RADR stands for…',o:['Rapid Airfield Damage Repair','Runway Approach Defense Radar','Remote Aircraft Data Recorder','Rapid Air Defense Response'],ph:0,ex:'RADR = Rapid Airfield Damage Repair(활주로 급속 피해복구).'},
- {c:'영어',q:'EOD stands for…',o:['Explosive Ordnance Disposal','Emergency Operations Division','Equipment Overhaul Depot','Engineering Operations Duty'],ph:1,ex:'EOD = Explosive Ordnance Disposal(폭발물 처리).'},
- {c:'영어',q:'"되메우기"를 영어로 하면?',o:['Backfill','Overlay','Curing','Spall'],ph:5,ex:'Backfill = 되메우기.'},
- {c:'영어',q:'"다짐"을 영어로 하면?',o:['Compaction','Excavation','Saw cutting','Debris removal'],ph:6,ex:'Compaction = 다짐.'},
- {c:'영어',q:'"양생"을 영어로 하면?',o:['Curing','Mixing','Grading','Paving'],ph:8,ex:'Curing = 양생.'},
- {c:'영어',q:'"진동롤러"를 영어로 하면?',o:['Vibratory roller','Wheel loader','Line striper','Street sweeper'],ph:6,ex:'Vibratory roller = 진동롤러.'},
- {c:'영어',q:'Which machine digs out the broken slab?',o:['Excavator','Sweeper','Line striper','Volumetric mixer'],ph:4,ex:'Excavator = 굴삭기.'},
- {c:'영어',q:'"Upheaval"은 무엇을 뜻하나요?',o:['크레이터 주변 융기부','불발탄','배수로','중심선'],ph:1,ex:'Upheaval = 폭발로 포장이 솟아오른 융기부.'},
- {c:'영어',q:'"Saw cutting"은 어느 단계인가요?',o:['포장 절단','다짐','양생','파편 제거'],ph:3,ex:'Saw cutting = 포장 절단.'},
- {c:'영어',q:'"Rapid-setting concrete"의 뜻은?',o:['급속경화 콘크리트','아스팔트 혼합물','쇄석 골재','양생제'],ph:7,ex:'Rapid-setting concrete = 급속경화 콘크리트.'},
- {c:'영어',q:'"Damage assessment"의 뜻은?',o:['피해평가','피해복구','파편 제거','운용 재개'],ph:1,ex:'Damage assessment = 피해평가.'},
- {c:'영어',q:'"Centerline marking"은?',o:['중심선 표지','절단선','융기부','배수 경사'],ph:10,ex:'Centerline marking = 활주로 중심선 표지.'},
- {c:'영어',q:'Which step removes small debris that could be sucked into jet engines?',o:['FOD sweeping','Compaction','Backfilling','Curing'],ph:9,ex:'FOD sweeping = FOD 청소.'},
- {c:'영어',q:'"Wheel loader"는 우리말로?',o:['휠로더','굴삭기','덤프트럭','노면청소차'],ph:2,ex:'Wheel loader = 휠로더.'},
- {c:'영어',q:'"Dump truck"이 하는 일은?',o:['파편 반출과 골재 운반','중심선 도색','포장 절단','다짐'],ph:2,ex:'Dump truck = 덤프트럭. 파편을 실어 나가고 쇄석을 실어 옵니다.'}
-];
-const QSETS=[{id:'general',n:'종합 평가',d:'절차·장비·수치·용어 10문항 · 합격선 70%',k:10},{id:'english',n:'영어 용어 퀴즈',d:'RADR 영어 용어 8문항',k:8},{id:'find',n:'장비 찾기 (3D)',d:'3D 화면에서 장비를 직접 찾아 탭 · 5문항',k:5}];
+const QZC=CFG.quiz||{};
+const qClean=a=>(Array.isArray(a)?a:[]).filter(q=>q&&q.q&&Array.isArray(q.o)&&q.o.filter(Boolean).length>=2).map(q=>Object.assign({},q,{o:q.o.filter(Boolean).map(String),ph:Number.isInteger(+q.ph)?+q.ph:-1,sc:q.sc===undefined||q.sc===''||q.sc===null?undefined:+q.sc,ex:String(q.ex||'')}));
+const QBANK=qClean(QZC.bank);
+const PASS=num(QZC.passRate,0.7,0.1,1);
+const QEN=qClean(QZC.en);
+const QSETS=[{id:'general',n:'종합 평가',d:`절차·장비·수치·용어 10문항 · 합격선 ${Math.round(PASS*100)}%`,k:10},{id:'english',n:'영어 용어 퀴즈',d:'RADR 영어 용어 8문항',k:8},{id:'find',n:'장비 찾기 (3D)',d:`3D 화면에서 장비를 직접 찾아 탭 · ${Math.min(5,EQ_ON.length)}문항`,k:5}];
 let QZ=null,prevLabels=true,reveal=null;
 const shuffle=a=>{const r=a.slice();for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]]}return r};
 function renderQSets(){$('qSets').innerHTML='';QSETS.forEach(s=>{const b=document.createElement('button');b.className='qset';const best=PG.best[s.id];
   b.innerHTML=`<b>${s.n}</b><span>${s.d}</span><em>${best!==undefined?'최고 '+best+'점':'NEW'}</em>`;b.onclick=()=>startQuiz(s.id);$('qSets').appendChild(b)})}
 function startQuiz(id){const set=QSETS.find(s=>s.id===id);let list;
-  if(id==='general'){const by=c=>shuffle(QBANK.filter(q=>q.c===c));list=shuffle([...by('절차').slice(0,4),...by('장비').slice(0,3),...by('수치').slice(0,2),...by('용어').slice(0,1)])}
-  else if(id==='english')list=shuffle(QEN).slice(0,set.k);
-  else list=shuffle(EQ_ORDER).slice(0,set.k).map(k=>({c:'3D 식별',find:true,key:k,q:`대기 지역에 세워진 장비 중 「${EQ[k].name}」를 찾아 탭하세요.`,ph:PH.findIndex(p=>p.equip.includes(k)),ex:`${EQ[k].name}: ${EQ[k].role}`}));
+  if(id==='general'){const by=c=>shuffle(QBANK.filter(q=>q.c===c));list=shuffle([...by('절차').slice(0,4),...by('장비').slice(0,3),...by('수치').slice(0,2),...by('용어').slice(0,1)]);
+    if(list.length<set.k)list=list.concat(shuffle(QBANK.filter(q=>!list.includes(q))).slice(0,set.k-list.length));if(!list.length){toast('평가 문제가 없습니다');return}}
+  else if(id==='english'){list=shuffle(QEN).slice(0,set.k);if(!list.length){toast('영어 문제가 없습니다');return}}
+  else list=shuffle(EQ_ON).slice(0,set.k).map(k=>({c:'3D 식별',find:true,key:k,q:`대기 지역에 세워진 장비 중 「${EQ[k].name}」를 찾아 탭하세요.`,ph:(PH.find(p=>p.equip.includes(k))||{bi:-1}).bi,ex:`${EQ[k].name}: ${EQ[k].role}`}))
+  if(!list.length){toast('문제가 없습니다');return};
   list=list.map(q=>{if(q.find)return q;const opts=shuffle(q.o.map((o,i)=>({o,ok:i===0})));return Object.assign({},q,{opts})});
   QZ={id,set,list,i:0,score:0,streak:0,maxStreak:0,correct:0,wrong:[],t0:performance.now(),answered:false,fast:false};
   prevLabels=showLabels;showLabels=false;setPlay(false);if(sectionOn)setSection(false);
@@ -1645,7 +1614,7 @@ function showQ(){const q=QZ.list[QZ.i];QZ.answered=false;reveal=null;selected=nu
   $('qText').textContent=q.q;$('qFb').hidden=true;$('qFind').hidden=!q.find;const box=$('qOpts');box.innerHTML='';
   if(!q.find)q.opts.forEach((o,i)=>{const b=document.createElement('button');b.innerHTML=`<i>${i+1}</i><span></span>`;b.lastChild.textContent=o.o;b.onclick=()=>answer(i);box.appendChild(b)});
   if(q.find){t=0.5;lastKey='';camTo(0,34,94,0,0,38)}
-  else if(q.sc!==undefined){t=P(q.sc,0.55);lastKey='';setAuto(true);camSnap=true}
+  else if(q.sc!==undefined&&A[q.sc]&&A[q.sc].on){t=P(q.sc,0.55);lastKey='';setAuto(true);camSnap=true}
   QZ.lim=q.find?30:25;QZ.qt=performance.now();$('quiz').scrollTop=0;kick()}
 function qTimer(){if(!QZ||QZ.answered||mode!=='quiz')return;const el=(performance.now()-QZ.qt)/1000;const left=QZ.lim-el;
   $('qTimer').firstChild.style.width=clamp(left/QZ.lim,0,1)*100+'%';$('qTimer').classList.toggle('low',left<6);
@@ -1670,7 +1639,7 @@ function resolve(ok,given,why){const q=QZ.list[QZ.i];QZ.answered=true;const el=(
   $('qNext').onclick=()=>{QZ.i++;if(QZ.i<QZ.list.length)showQ();else finishQuiz()};
   $('qScore').textContent=QZ.score;$('qStreak').textContent=QZ.streak;setTimeout(()=>{fb.scrollIntoView({block:'nearest',behavior:'smooth'})},30);kick()}
 function gradeOf(acc){return acc>=.9?'S':acc>=.8?'A':acc>=.7?'B':acc>=.6?'C':'F'}
-function finishQuiz(){const z=QZ;const n=z.list.length,acc=z.correct/n,g=gradeOf(acc),secs=Math.round((performance.now()-z.t0)/1000);const pass=acc>=0.7;
+function finishQuiz(){const z=QZ;const n=z.list.length,acc=z.correct/n,g=gradeOf(acc),secs=Math.round((performance.now()-z.t0)/1000);const pass=acc>=PASS;
   const before=PG.badges.slice();sfx.done();
   const rec={d:new Date().toISOString(),m:z.set.n,s:z.score,a:Math.round(acc*100),g};PG.hist.unshift(rec);PG.hist=PG.hist.slice(0,30);
   const best=PG.best[z.id];const newBest=best===undefined||z.score>best;if(newBest)PG.best[z.id]=z.score;save();
@@ -1679,7 +1648,7 @@ function finishQuiz(){const z=QZ;const n=z.list.length,acc=z.correct/n,g=gradeOf
   if(z.id==='english'&&acc>=0.8)award('english');if(z.id==='find'&&acc===1)award('eye');
   const nb=PG.badges.filter(b=>!before.includes(b));
   openModal(`<div class="phd"><h2>평가 결과 · ${z.set.n}</h2><button class="x" data-mclose aria-label="닫기">×</button></div>
-   <div class="grade"><div class="g ${g}">${g}</div><div class="d"><b>${pass?'합격':'재교육 권장'}</b><span class="note">${pass?'잘했습니다. 틀린 문항을 다시 확인해 두세요.':'70% 미만입니다. 관련 단계를 다시 학습한 뒤 도전하세요.'}${newBest?' · 최고 기록 갱신':''}</span></div></div>
+   <div class="grade"><div class="g ${g}">${g}</div><div class="d"><b>${pass?'합격':'재교육 권장'}</b><span class="note">${pass?'잘했습니다. 틀린 문항을 다시 확인해 두세요.':'${Math.round(PASS*100)}% 미만입니다. 관련 단계를 다시 학습한 뒤 도전하세요.'}${newBest?' · 최고 기록 갱신':''}</span></div></div>
    <div class="stats"><div><span>점수</span><b>${z.score}</b></div><div><span>정답률</span><b>${Math.round(acc*100)}%</b></div><div><span>소요 시간</span><b>${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}</b></div><div><span>최고 연속</span><b>${z.maxStreak}</b></div></div>
    <div class="note">획득 XP +${xp}${nb.length?' · 새 배지: '+nb.map(id=>BADGES.find(b=>b.id===id).n).join(', '):''}</div>
    ${z.wrong.length?`<section><div class="k">틀린 문항 다시 보기</div><div class="review" id="rv"></div></section>`:''}
@@ -1687,7 +1656,7 @@ function finishQuiz(){const z=QZ;const n=z.list.length,acc=z.correct/n,g=gradeOf
    <div class="mrow"><button class="pri" id="mRetry">다시 풀기</button><button id="mOther">다른 평가 선택</button><button id="mLearn">학습으로 돌아가기</button></div>`);
   if(z.wrong.length){const rv=$('rv');z.wrong.forEach(w=>{const d=document.createElement('div');const ans=w.q.find?EQ[w.q.key].name:w.q.o[0];
     d.innerHTML='<p class="qq"></p><p class="you"></p><p class="ans"></p><p class="note ex"></p>';d.querySelector('.qq').textContent=w.q.q;d.querySelector('.you').textContent='내 답: '+w.given;d.querySelector('.ans').textContent='정답: '+ans;d.querySelector('.ex').textContent=w.q.ex;
-    if(w.q.ph>=0){const b=document.createElement('button');b.textContent=`단계 ${String(w.q.ph).padStart(2,'0')} 다시 보기`;b.style.marginTop='6px';b.onclick=()=>{closeModal();setMode('learn');jump(w.q.ph);setPlay(true)};d.appendChild(b)}rv.appendChild(d)})}
+    if(phIdx(w.q.ph)>=0){const b=document.createElement('button');b.textContent=`단계 ${String(phIdx(w.q.ph)).padStart(2,'0')} 다시 보기`;b.style.marginTop='6px';b.onclick=()=>{closeModal();setMode('learn');jump(phIdx(w.q.ph));setPlay(true)};d.appendChild(b)}rv.appendChild(d)})}
   $('mName').value=PG.name||'';$('mName').oninput=e=>{PG.name=e.target.value;save()};
   $('mCopy').onclick=()=>{const txt=`[RADR 활주로 피해복구 훈련 결과]\n이름: ${PG.name||'(미입력)'}\n일시: ${new Date().toLocaleString('ko-KR')}\n평가: ${z.set.n}\n점수: ${z.score}점 · 정답률 ${Math.round(acc*100)}% (${z.correct}/${n}) · 등급 ${g} · ${pass?'합격':'재교육 권장'}\n레벨: Lv.${level(PG.xp)+1} ${LVT[level(PG.xp)]} (${PG.xp} XP) · 학습 단계 ${PG.learned.length}/${PH.length}`;
     copyText(txt)};
@@ -1706,7 +1675,7 @@ $('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
 function openRecords(){const l=level(PG.xp);const a=LV[l],b=LV[l+1];
   openModal(`<div class="phd"><h2>학습 기록</h2><button class="x" data-mclose aria-label="닫기">×</button></div>
    <div class="grade"><div class="g" style="font-size:40px">Lv.${l+1}</div><div class="d"><b>${LVT[l]}</b><span class="note">${PG.xp} XP${b?` · 다음 레벨까지 ${b-PG.xp} XP`:' · 최고 레벨'}</span><div class="xpb" style="width:220px"><i style="width:${b?clamp((PG.xp-a)/(b-a),0,1)*100:100}%"></i></div></div></div>
-   <section><div class="k">학습한 단계 ${PG.learned.length}/${PH.length} · 재생으로 단계를 80% 이상 보면 이수</div><div class="pgrid">${PH.map((p,i)=>`<i class="${PG.learned.includes(i)?'on':''}" title="${p.title}">${String(i).padStart(2,'0')}</i>`).join('')}</div></section>
+   <section><div class="k">학습한 단계 ${PH.filter((q,j)=>isLearned(j)).length}/${PH.length} · 재생으로 단계를 80% 이상 보면 이수</div><div class="pgrid">${PH.map((p,i)=>`<i class="${isLearned(i)?'on':''}" title="${p.title}">${String(i).padStart(2,'0')}</i>`).join('')}</div></section>
    <section><div class="k">배지 ${PG.badges.length}/${BADGES.length}</div><div class="badges">${BADGES.map(b=>`<div class="badge ${PG.badges.includes(b.id)?'got':''}"><span class="ic">${b.ic}</span><span><b>${b.n}</b><small>${b.d}</small></span></div>`).join('')}</div></section>
    <section><div class="k">최근 평가</div>${PG.hist.length?`<table>${PG.hist.slice(0,8).map(h=>`<tr><td>${new Date(h.d).toLocaleDateString('ko-KR')} · ${h.m}</td><td>${h.s}점 · ${h.a}% · ${h.g}</td></tr>`).join('')}</table>`:'<p class="note">아직 평가 기록이 없습니다. 상단의 「평가」를 눌러 시작하세요.</p>'}</section>
    <p class="note">기록은 이 기기 브라우저에만 저장됩니다.</p>
@@ -1717,30 +1686,32 @@ $('lvl').onclick=openRecords;
 
 // ---------- AI instructor (PoC: local knowledge base, no network) ----------
 const KB=[
+ {k:['인원','편성','몇명','사람','팀'],a:()=>`복구팀 편성 (총 ${ROSTER.reduce((a,r)=>a+r.count,0)}명)\n${ROSTER.map(r=>`· ${r.role} ${r.count}명${r.note?' — '+r.note:''}`).join('\n')}\n\n단계별 투입 인원\n${PH.map(p=>`· ${p.title} ${p.crew}명`).join('\n')}`},
+ {k:['공법','방법','method'],a:()=>`적용 공법: ${MTH.name}\n· 기존 슬래브 두께 ${fmt(MTH.slab,2)} m\n· ${MTH.capMaterial} 두께 ${fmt(MTH.cap,2)} m\n· 되메움 재료: ${MTH.fillMaterial}\n· 절단 여유: 융기부 바깥 ${fmt(MTH.cutMargin)} m\n· 다짐 ${MTH.passes}패스`},
  {k:['radr','급속','피해복구','전체','개요','순서','절차','과정','흐름'],a:()=>`RADR(Rapid Airfield Damage Repair)은 공습으로 파인 활주로를 빠르게 복구해 항공기 운용을 재개하는 절차입니다.\n\n${PH.map((p,i)=>`${String(i).padStart(2,'0')} ${p.title}`).join('\n')}\n\n이 시뮬레이션의 예시 총 소요 시간은 약 ${hm(RT)}입니다.`,ph:0},
  {k:['uxo','불발탄','eod','폭발물','안전'],a:'크레이터 주변에 불발탄(UXO)이 남아 있을 수 있어, 복구 작업 전에 EOD(폭발물 처리)팀이 먼저 탐지·처리합니다. 안전이 확인되기 전에는 장비를 투입하지 않습니다.',ph:1},
  {k:['mos','최소운영','최소 운영','활주구간'],a:'MOS(Minimum Operating Strip, 최소운영활주로)는 항공기가 이착륙할 수 있는 최소 구간입니다. 예시로 폭 15 m × 길이 1,525 m를 잡고, 그 안에 있는 크레이터부터 복구합니다.',ph:1},
  {k:['피해평가','측정','치수','직경','깊이','assessment'],a:()=>`피해평가 단계에서 겉보기 직경, 깊이, 융기부 범위를 측정합니다. 현재 선택한 ${SC.label} 크레이터는 직경 ${fmt(SC.R*2)} m, 깊이 ${fmt(SC.D)} m, 융기부 Ø${fmt(SC.upR*2)} m입니다.`,ph:1},
- {k:['융기','upheaval','솟아'],a:()=>`융기부(upheaval)는 폭발 압력으로 크레이터 주변 포장이 솟아오르고 금이 간 부분입니다. 겉보기 크레이터보다 넓으므로(현재 Ø${fmt(SC.upR*2)} m) 그 바깥 0.4 m 이상에서 절단합니다(예시).`,ph:1},
+ {k:['융기','upheaval','솟아'],a:()=>`융기부(upheaval)는 폭발 압력으로 크레이터 주변 포장이 솟아오르고 금이 간 부분입니다. 겉보기 크레이터보다 넓으므로(현재 Ø${fmt(SC.upR*2)} m) 그 바깥 ${fmt(MTH.cutMargin)} m 이상에서 절단합니다(예시).`,ph:1},
  {k:['파편','debris','잔해','치우'],a:'파편 제거 단계에서는 휠로더가 큰 콘크리트 덩어리를 밀어내고 덤프트럭이 반출합니다. 이후 절단·굴착 장비가 들어갈 공간과 진입로를 확보하는 것이 목적입니다.',ph:2},
  {k:['절단','자르','saw','cutting','정사각형','절단선','수직면'],a:()=>`포장 절단은 손상 범위 바깥을 정사각형(현재 ${fmt(2*SC.S)} × ${fmt(2*SC.S)} m)으로 자르는 작업입니다. 습식 다이아몬드 블레이드로 슬래브 전체 두께를 잘라 수직면을 만들면 새 콘크리트와 기존 슬래브가 하중을 고르게 주고받습니다.`,ph:3},
- {k:['굴착','파내','excavat','브레이커'],a:'굴착 단계에서는 굴삭기가 절단선 안쪽의 깨진 슬래브와 솟은 흙을 슬래브 두께(약 0.45 m)까지 걷어내 덤프트럭에 싣습니다. 단단한 부분은 유압 브레이커로 깹니다.',ph:4},
- {k:['되메우','backfill','쇄석','골재','채우'],a:()=>`되메우기는 크레이터를 쇄석 골재로 채워 콘크리트 아래 지지층을 만드는 단계입니다. 표면 아래 약 0.30 m까지 채우며, 현재 크레이터 기준 골재량은 약 ${fmt(SC.fillVol)} m³입니다.`,ph:5},
+ {k:['굴착','파내','excavat','브레이커'],a:()=>`굴착 단계에서는 굴삭기가 절단선 안쪽의 깨진 슬래브와 솟은 흙을 슬래브 두께(약 ${fmt(MTH.slab,2)} m)까지 걷어내 덤프트럭에 싣습니다. 단단한 부분은 유압 브레이커로 깹니다.`,ph:4},
+ {k:['되메우','backfill','쇄석','골재','채우'],a:()=>`되메우기는 크레이터를 쇄석 골재로 채워 콘크리트 아래 지지층을 만드는 단계입니다. 표면 아래 약 ${fmt(MTH.cap,2)} m까지 채우며, 현재 크레이터 기준 골재량은 약 ${fmt(SC.fillVol)} m³입니다.`,ph:5},
  {k:['다짐','compact','롤러','침하'],a:'다짐은 진동롤러로 되메움 층을 겹치게 왕복하며 다지는 작업입니다. 빈틈이 남으면 항공기의 반복 하중에 보수부가 내려앉으므로, 다짐 후 높이를 확인하고 부족하면 보충합니다.',ph:6},
- {k:['콘크리트','타설','급속경화','믹서','rapid','concrete','스크리드'],a:()=>`부피계량식 믹서트럭이 시멘트·골재·물을 현장에서 배합해 급속경화 콘크리트를 한쪽 끝부터 타설하고, 스크리드로 평탄하게 고릅니다. 두께는 0.30 m, 현재 물량은 약 ${fmt(SC.concVol)} m³입니다(예시).`,ph:7},
- {k:['양생','curing','굳','강도'],a:'양생은 콘크리트가 항공기 하중을 견딜 강도에 도달할 때까지 표면을 보호하며 기다리는 단계입니다. 급속경화 재료는 종류에 따라 약 1~2시간이 걸립니다(이 시뮬레이션 예시: 60분).',ph:8},
+ {k:['콘크리트','타설','급속경화','믹서','rapid','concrete','스크리드'],a:()=>`부피계량식 믹서트럭이 시멘트·골재·물을 현장에서 배합해 급속경화 콘크리트를 한쪽 끝부터 타설하고, 스크리드로 평탄하게 고릅니다. 두께는 ${fmt(MTH.cap,2)} m, 현재 물량은 약 ${fmt(SC.concVol)} m³입니다(예시).`,ph:7},
+ {k:['양생','curing','굳','강도'],a:()=>`양생은 콘크리트가 항공기 하중을 견딜 강도에 도달할 때까지 표면을 보호하며 기다리는 단계입니다. 급속경화 재료는 종류에 따라 약 1~2시간이 걸립니다(이 시뮬레이션 예시: ${A[8].real}분).`,ph:8},
  {k:['fod','이물질','청소','sweep','스위퍼'],a:'FOD(Foreign Object Debris)는 엔진에 빨려 들어갈 수 있는 작은 돌·파편입니다. 노면청소차로 보수 구역과 주변을 쓸고, 마지막으로 사람이 걸으며 직접 확인합니다.',ph:9},
  {k:['도색','표지','중심선','marking','재개','이륙'],a:'마지막으로 보수 구역을 지나는 중심선 표지를 다시 칠하고, 최종 점검 후 관제에 복구 완료를 보고하면 항공기 운용을 재개합니다.',ph:10},
  {k:['시간','얼마나','소요','몇분','총'],a:()=>`단계별 예시 소요 시간입니다.\n${PH.map(p=>`· ${p.title} ${p.real}분`).join('\n')}\n합계 약 ${hm(RT)} (교육용 예시값).`},
- {k:['장비','차량','목록','equipment'],a:()=>`투입 장비는 ${EQ_ORDER.length}종입니다.\n${EQ_ORDER.map(k=>`· ${EQ[k].name} (${EQ[k].en})`).join('\n')}\n3D 화면에서 장비를 누르면 제원을 볼 수 있습니다.`},
+ {k:['장비','차량','목록','equipment'],a:()=>`투입 장비는 ${EQ_ON.length}종입니다.\n${EQ_ON.map(k=>`· ${EQ[k].name} (${EQ[k].en})`).join('\n')}\n3D 화면에서 장비를 누르면 제원을 볼 수 있습니다.`},
  {k:['신호수','유도','안전요원'],a:'굴삭기와 덤프트럭이 함께 움직이는 굴착 단계에서는 신호수가 장비 사이 안전거리와 후진을 유도합니다. 장비 후진 경보음에도 주의하세요.',ph:4},
  {k:['영어','english','용어'],a:'자주 쓰는 영어 용어입니다.\n· Crater 크레이터 · Upheaval 융기부\n· UXO 불발탄 · EOD 폭발물 처리\n· MOS 최소운영활주로 · Saw cutting 포장 절단\n· Backfill 되메우기 · Compaction 다짐\n· Rapid-setting concrete 급속경화 콘크리트\n· Curing 양생 · FOD 이물질\n「평가 → 영어 용어 퀴즈」로 확인해 보세요.'},
  {k:['점수','레벨','xp','배지','평가','퀴즈','시험'],a:'단계를 끝까지 보면 +20 XP, 장비 제원을 처음 보면 +10 XP를 받습니다. 「평가」에서 종합 평가·영어 퀴즈·3D 장비 찾기를 풀 수 있고, 빨리·연속으로 맞힐수록 점수가 올라갑니다. 정답률 70% 이상이면 합격입니다.'}
 ];
-EQ_ORDER.forEach(k=>{const e=EQ[k];KB.push({k:[e.short.replace(/\s/g,'').toLowerCase(),e.name.replace(/\s/g,'').toLowerCase(),e.en.toLowerCase().replace(/\s/g,'')],a:()=>`${e.name} (${e.en})\n${e.role}\n\n${e.specs.map(s=>`· ${s[0]}: ${s[1]}`).join('\n')}`,ph:PH.findIndex(p=>p.equip.includes(k)),eq:k,w:2})});
+EQ_ON.forEach(k=>{const e=EQ[k];KB.push({k:[e.short.replace(/\s/g,'').toLowerCase(),e.name.replace(/\s/g,'').toLowerCase(),e.en.toLowerCase().replace(/\s/g,'')],a:()=>`${e.name} (${e.en})\n${e.role}\n\n${e.specs.map(s=>`· ${s[0]}: ${s[1]}`).join('\n')}`,ph:(PH.find(p=>p.equip.includes(k))||{bi:-1}).bi,eq:k,w:2})});
 const AI_SUG=['전체 절차를 알려줘','지금 단계 설명해줘','다짐은 왜 하나요?','MOS가 뭐예요?','굴삭기 제원은?','FOD가 뭐예요?','영어 용어 알려줘'];
 function localAnswer(q){const n=q.toLowerCase().replace(/\s+/g,'');
-  if(/지금|현재|이단계|여기/.test(n)){const i=phaseAt(t);const p=PH[i];return {a:`지금은 단계 ${String(i).padStart(2,'0')} 「${p.title}」(${p.en})입니다.\n${p.goal}\n\n${p.steps.map(s=>'· '+s).join('\n')}`,ph:i}}
+  if(/지금|현재|이단계|여기/.test(n)){const i=phaseAt(t);const p=PH[i];return {a:`지금은 단계 ${String(i).padStart(2,'0')} 「${p.title}」(${p.en})입니다.\n${p.goal}\n\n${p.steps.map(s=>'· '+s).join('\n')}`,ph:i,cur:true}}
   let best=null,bs=0;KB.forEach(e=>{let s=0;e.k.forEach(k=>{if(k&&n.includes(k.replace(/\s/g,'')))s+=k.length*(e.w||1)});if(s>bs){bs=s;best=e}});
   if(!best)return {a:'아직 그 질문에는 준비된 답이 없습니다(PoC). 절차·장비·용어에 관해 물어보세요. 예: 「되메우기 재료는?」, 「절단기 제원」, 「양생 시간」.',miss:true};
   return {a:typeof best.a==='function'?best.a():best.a,ph:best.ph,eq:best.eq}}
@@ -1753,7 +1724,7 @@ async function aiAsk(q){q=q.trim();if(!q||aiBusy)return;aiBusy=true;aiMsg('u',q)
   const r=await askAI(q);tp.classList.remove('typing');tp.textContent='';let i=0;const txt=r.a;
   await new Promise(res=>{const iv=setInterval(()=>{i=Math.min(txt.length,i+4);tp.textContent=txt.slice(0,i);if(i>=txt.length){clearInterval(iv);res()}},16)});
   const src=document.createElement('div');src.className='src';
-  if(r.ph!==undefined&&r.ph>=0){const b=document.createElement('button');b.textContent=`단계 ${String(r.ph).padStart(2,'0')} 장면 보기`;b.onclick=()=>{jump(r.ph);setPlay(true)};src.appendChild(b)}
+  if(r.ph!==undefined&&(r.cur?r.ph>=0:phIdx(r.ph)>=0)){const pi=r.cur?r.ph:phIdx(r.ph);const b=document.createElement('button');b.textContent=`단계 ${String(pi).padStart(2,'0')} 장면 보기`;b.onclick=()=>{jump(pi);setPlay(true)};src.appendChild(b)}
   if(r.eq){const b=document.createElement('button');b.textContent='3D에서 장비 보기';b.onclick=()=>{setMode('learn');select(r.eq,true)};src.appendChild(b)}
   if(src.children.length)tp.appendChild(src);tp.scrollIntoView({block:'end'});
   if(!r.miss){PG.ai=(PG.ai||0)+1;save();if(PG.ai<=3)addXP(5,'AI 교관에게 질문');if(PG.ai>=3)award('ai')}
@@ -1779,6 +1750,7 @@ renderLvl();
 const _wp=new THREE.Vector3();
 function rearDust(e,k,rate,dt,col){if(Math.random()>rate*dt)return;const back=k==='excavator'?-2.2:-2.6;const a=e.g.rotation.y;const s=e.pos.rv?-1:1;
   const x=e.g.position.x+Math.cos(a)*back*s,z=e.g.position.z-Math.sin(a)*back*s;emit(x,0.3,z,{s0:0.8,s1:3.4,life:2.6,a:0.28,col:col||[0.6,0.54,0.45],spread:2,jit:0.8})}
+const DUST=num((CFG.anim||{}).dust,1,0,3),CAM_ROT=num((CFG.anim||{}).camRotate,0.035,0,0.5),JET_ON=(CFG.anim||{}).jet!==false;
 function updateEquipment(dt){
   const live=playing&&!scrubbing;const i=phaseAt(t);const {S}=SC;
   EQ_ORDER.forEach(k=>{const e=EQ[k];const p=pose(e.path,t);e.pos=p;
@@ -1786,10 +1758,11 @@ function updateEquipment(dt){
     const pr=e.prev;let dist=0;if(pr){dist=Math.hypot(p.x-pr.x,p.z-pr.z);if(dist>8)dist=0}e.prev={x:p.x,z:p.z};
     e.spd=dt>0?lerp(e.spd,dist/dt,0.2):0;
     if(dist>0)e.wheels.forEach(w=>{w.m.rotation.z-=dist/w.r*(p.rv?-1:1)});
-    if(live&&e.spd>0.6&&Math.abs(p.x)<S+12&&Math.abs(p.z)<S+12&&i>=2&&i<=6&&k!=='saw')rearDust(e,k,8,dt)});
+    if(live&&e.spd>0.6&&Math.abs(p.x)<S+12&&Math.abs(p.z)<S+12&&biOf(i)>=2&&biOf(i)<=6&&k!=='saw')rearDust(e,k,8*DUST,dt)});
+  EQ_ORDER.forEach(k=>{if(EQ[k].off)EQ[k].g.visible=false});
   // loader arm
   {const e=EQ.loader;const p=e.pos;const tgt=p.mv?(p.rv?0.25:-0.44):-0.1;e.armCur+=(tgt-e.armCur)*Math.min(1,dt*3+(scrubbing?1:0));e.arm.rotation.z=e.armCur;e.bucket.rotation.z=-e.armCur*0.9+(p.rv?0.35:0);
-    if(p.mv&&!p.rv&&(i===2||i===5)){e.work=0.6;if(live&&Math.random()<dt*10){e.bucket.getWorldPosition(_wp);emit(_wp.x,0.3,_wp.z,{s0:0.7,s1:3,life:2,a:0.3,spread:2.5,col:i===5?[0.66,0.63,0.58]:[0.62,0.56,0.47]})}}}
+    if(p.mv&&!p.rv&&(biOf(i)===2||biOf(i)===5)){e.work=0.6;if(live&&Math.random()<dt*10){e.bucket.getWorldPosition(_wp);emit(_wp.x,0.3,_wp.z,{s0:0.7,s1:3,life:2,a:0.3,spread:2.5,col:biOf(i)===5?[0.66,0.63,0.58]:[0.62,0.56,0.47]})}}}
   // dump bed + load
   {const e=EQ.dump;let tilt=0,load=0;
     if(t>=P(2,.4)&&t<P(2,1))load=winU(2,t,.4,.85);
@@ -1821,22 +1794,22 @@ function updateEquipment(dt){
   // painter spray
   {const e=EQ.painter;const u=phU(10,t);e.spray.visible=u>.1&&u<.45;if(e.spray.visible)e.work=0.3}
   // measuring crew (phase 1)
-  {const u=phU(1,t);const {upR}=SC;const rr=upR+1.0;const base={x:-SC.S-9.5,z:3};
-    crewMeasure.forEach((c,ci)=>{const vis=u>.18&&u<.84;c.g.visible=vis;if(!vis){c.p=null;return}let x,z,a;const span=(ci?1:-1)*PI*0.9;
+  {const u=phU(1,t);const {upR}=SC;const rr0=upR+1.0;const base={x:-SC.S-9.5,z:3};
+    crewMeasure.forEach((c,ci)=>{const vis=u>.18&&u<.84;c.g.visible=vis;if(!vis){c.p=null;return}let x,z,a;const span=(ci%2?1:-1)*PI*0.9;const rr=rr0+Math.floor(ci/2)*1.1;
       if(u<.3){const k=sm((u-.18)/.12);x=lerp(base.x,-rr,k);z=lerp(base.z+ci*1.2,0,k);a=Math.atan2(-(0-base.z),(-rr-base.x))}
       else if(u<.72){const k=sm((u-.3)/.42);const th=PI+span*k;x=Math.cos(th)*rr;z=Math.sin(th)*rr;const th2=th+Math.sign(span)*0.1;a=Math.atan2(-(Math.sin(th2)*rr-z),Math.cos(th2)*rr-x)}
       else{const k=sm((u-.72)/.12);const th=PI+span;const sx=Math.cos(th)*rr,sz=Math.sin(th)*rr;x=lerp(sx,base.x,k);z=lerp(sz,base.z+ci*1.2,k);a=Math.atan2(-(base.z-sz),base.x-sx)}
-      const d=c.p?Math.hypot(x-c.p.x,z-c.p.z):0;c.p={x,z};animFigure(c,d<2?d:0,d>0.001?'walk':'stand');
+      const d=c.p?Math.hypot(x-c.p.x,z-c.p.z):0;c.p={x,z};animFigure(c,d<2?d*CREW_WALK:0,d>0.001?'walk':'stand');
       c.g.position.set(x,groundAt(x,z),z);c.g.rotation.y=a})}
   // signalman (phase 4)
-  {const u=phU(4,t);const vis=u>.04&&u<.95;crewSignal.g.visible=vis;if(vis){const exZ=-(S+3.2);const xx=u<.5?-0.45*S-3.4:0.45*S-3.4;
-      crewSignal.g.position.set(xx,0,exZ-5);crewSignal.g.rotation.y=PI/2*0.8;animFigure(crewSignal,0,'wave')}}
+  {const u=phU(4,t);const vis=u>.04&&u<.95;crewSignals.forEach((c,ci)=>{c.g.visible=vis;if(vis){const exZ=-(S+3.2);const xx=(u<.5?-0.45*S-3.4:0.45*S-3.4)+ci*2.2;
+      c.g.position.set(xx,0,exZ-5-ci*0.8);c.g.rotation.y=PI/2*0.8;animFigure(c,0,'wave')}})}
   // finishing crew + screed (phase 7)
   {const u=phU(7,t);const vis=u>.12&&u<.9;screed.visible=vis;crewFinish.forEach(c=>c.g.visible=vis);
     if(vis){const cx=-S+ST.conc*2*S;screed.scale.z=2*S+1.4;screed.position.set(cx-0.45,0.06,0);
-      crewFinish.forEach((c,ci)=>{const z=(ci?1:-1)*(S+0.75);const x=cx-0.6;const d=c.p?Math.abs(x-c.p):0;c.p=x;c.g.position.set(x,0,z);c.g.rotation.y=ci?-PI/2:PI/2;animFigure(c,d<1?d*2:0,'hold')})}}
+      crewFinish.forEach((c,ci)=>{const z=(ci%2?1:-1)*(S+0.75);const x=cx-0.6-Math.floor(ci/2)*1.3;const d=c.p?Math.abs(x-c.p):0;c.p=x;c.g.position.set(x,0,z);c.g.rotation.y=ci%2?-PI/2:PI/2;animFigure(c,d<1?d*2*CREW_WALK:0,'hold')})}}
   // jet
-  {const u=phU(10,t);const k=clamp((u-.55)/.45,0,1);jet.g.visible=u>.55&&u<1&&t<TT+1;if(jet.g.visible){const x=-170+380*k*k;const y=Math.max(0,x-35)*0.12;jet.g.position.set(x,y,0);jet.g.rotation.z=x>35?0.13:0;
+  {const u=phU(10,t);const k=clamp((u-.55)/.45,0,1);jet.g.visible=JET_ON&&u>.55&&u<1&&t<TT+1;if(jet.g.visible){const x=-170+380*k*k;const y=Math.max(0,x-35)*0.12;jet.g.position.set(x,y,0);jet.g.rotation.z=x>35?0.13:0;
       jet.gear.visible=y<3;jet.ab.visible=true;jet.ab.scale.set(0.8+Math.random()*0.3,1,1);jet.ab.material.opacity=0.55+Math.random()*0.25;
       if(live&&y<1&&Math.random()<dt*40)emit(x-9,0.5,(Math.random()-.5)*3,{s0:1,s1:6,life:2,a:0.12,vx:-12,col:[0.8,0.8,0.8],spread:1})}}
   // gravel heap
@@ -1852,13 +1825,13 @@ function updateDims(){
   const sqVis=showDims&&mode!=='quiz'&&ST.blast>=1&&(t>=P(1,.6))&&!(t>=P(10,0));DM.sq.visible=sqVis;
   const y=L+0.12;
   place(DL.dia,R*0.55,y+0.55,0,vis&&m>=1);place(DL.depth,0.1,-D*0.55,0,vis&&m>=1);place(DL.up,-upR*0.72,0.25,upR*0.72,vis&&m>=1);
-  DL.sq.textContent=ST.conc>0?`보수 구역 ${fmt(2*S)} × ${fmt(2*S)} m · 두께 0.30 m`:`절단선 ${fmt(2*S)} × ${fmt(2*S)} m`;
+  DL.sq.textContent=ST.conc>0?`보수 구역 ${fmt(2*S)} × ${fmt(2*S)} m · 두께 ${fmt(SC.cap,2)} m`:`절단선 ${fmt(2*S)} × ${fmt(2*S)} m`;
   place(DL.sq,S,0.3,-S,sqVis);
 }
 const tmpV=new THREE.Vector3();
 function focusPoint(){const i=phaseAt(t);const p=PH[i];const S=SC.S;
-  if(i===10&&jet.g.visible)return {x:jet.g.position.x*0.6,z:0,d:70};
-  if(i===0)return {x:0,z:0,d:62};
+  if(jet.g.visible)return {x:jet.g.position.x*0.6,z:0,d:70};
+  if(p.bi===0||p.bi<0)return {x:0,z:0,d:62};
   const pts=[[0,0]];p.equip.forEach(k=>{const ps=EQ[k].pos;if(Math.hypot(ps.x,ps.z)<S+25)pts.push([ps.x,ps.z])});
   let x=0,z=0;pts.forEach(q=>{x+=q[0];z+=q[1]});x/=pts.length;z/=pts.length;
   let spread=0;pts.forEach(q=>spread=Math.max(spread,Math.hypot(q[0]-x,q[1]-z)));
@@ -1870,23 +1843,22 @@ function updateCamera(dt){
   const f=focusPoint();const k=camSnap?1:1-Math.exp(-dt*1.6);camSnap=false;
   tmpV.set(f.x,0,f.z);const delta=tmpV.clone().sub(controls.target).multiplyScalar(k);controls.target.add(delta);camera.position.add(delta);
   const off=camera.position.clone().sub(controls.target);const len=lerp(off.length(),f.d*zoomMul,k);
-  if(playing&&!scrubbing){off.applyAxisAngle(new THREE.Vector3(0,1,0),dt*0.035)}
+  if(playing&&!scrubbing){off.applyAxisAngle(new THREE.Vector3(0,1,0),dt*CAM_ROT)}
   camera.position.copy(controls.target).add(off.setLength(len));
 }
 function updateLabels(){const i=phaseAt(t);const act=PH[i].equip;
-  EQ_ORDER.forEach(k=>{const e=EQ[k];const isAct=act.includes(k);const isSel=selected===k;const show=showLabels||reveal===k;
+  EQ_ORDER.forEach(k=>{const e=EQ[k];const isAct=act.includes(k);const isSel=selected===k;const show=(showLabels||reveal===k)&&!e.off;
     e.lbl.classList.toggle('active',isAct&&mode!=='quiz');e.lbl.classList.toggle('sel',isSel);
     const parked=Math.abs(e.pos.z-e.park.z)<0.5&&Math.abs(e.pos.x-e.park.x)<0.5;
     place(e.lbl,e.g.position.x,e.g.position.y+(k==='saw'||k==='painter'?2.2:4.4),e.g.position.z,show&&(reveal===k||!parked||isSel||isAct||camera.position.distanceTo(e.g.position)<70))});
   place(jetLbl,jet.g.position.x,jet.g.position.y+5,0,showLabels&&jet.g.visible);
-  place(crewLbl,crewMeasure[0].g.position.x,2.4,crewMeasure[0].g.position.z,showLabels&&crewMeasure[0].g.visible);
-  place(sigLbl,crewSignal.g.position.x,2.4,crewSignal.g.position.z,showLabels&&crewSignal.g.visible);
+  {const lb=(el,c)=>place(el,c?c.g.position.x:0,2.4*CREW_H,c?c.g.position.z:0,!!c&&showLabels&&c.g.visible);lb(crewLbl,crewMeasure[0]);lb(sigLbl,crewSignal);lb(finLbl,crewFinish[0])}
   place(zoneLbl,-4,0.2,47,showLabels||mode==='quiz');
   if(selected){const p=EQ[selected].g.position;selRing.visible=true;selRing.position.set(p.x,p.y+0.06,p.z);const s=selected==='saw'||selected==='painter'?0.45:1;selRing.scale.setScalar(s);selRing.rotation.z+=0.01;
     selRing.material.color.copy(mode==='quiz'&&QZ===null&&reveal===null?C(0xf0b429):(QZ&&QZ.answered&&selected!==reveal)?C(0xe8705e):C(0xf0b429))}else selRing.visible=false;
 }
 function updateUI(){const i=phaseAt(t);if(i!==curPhase){curPhase=i;renderPhaseCard(i)}meter(i);
-  const u=clamp(phU(i,t),0,1);const real=PH[i].rs+u*PH[i].real;
+  const u=clamp(phUi(i,t),0,1);const real=PH[i].rs+u*PH[i].real;
   $('clkReal').textContent='T+'+hm(real);$('clkSim').textContent=`작업 시간(예시) / 총 ${hm(RT)}`;
   PH.forEach((p,j)=>{p.sg.firstChild.style.width=(j<i?100:j>i?0:u*100)+'%'});
   const r=timelineEl.getBoundingClientRect(),sr=PH[i].sg.getBoundingClientRect();$('head').style.left=(sr.left-r.left+u*sr.width-1)+'px';
@@ -1909,13 +1881,28 @@ document.addEventListener('visibilitychange',()=>{if(SND.ctx){if(document.hidden
 
 window.RADR={jump:(i,u)=>{jump(i,u)},play:setPlay,mode:setMode,size:setScenario,cam:id=>$(id).click(),sel:k=>select(k,true),state:()=>({t,mode,xp:PG.xp})};
 // ---------- loop ----------
-setScenario('medium');resize();setPlay(true);
+// ---------- config-driven UI ----------
+const ROSTER=(Array.isArray(CRW.roster)?CRW.roster:[]).filter(r=>r&&r.role).map(r=>({role:String(r.role),count:Math.round(num(r.count,0,0,999)),note:String(r.note||'')}));
+{const M=CFG.meta||{};if(M.title){$('cfgTitle').textContent=M.title;document.title=M.title}if(M.eyebrow)$('cfgEyebrow').textContent=M.eyebrow;if(M.note)$('cfgNote').textContent=M.note;
+  const seg=$('sizeSeg');Object.entries(SIZES).forEach(([k,v])=>{const b=document.createElement('button');b.dataset.size=k;b.id='sz-'+k;b.innerHTML='<span></span><small></small>';b.firstChild.textContent=v.label;b.lastChild.textContent='Ø'+(+v.dia.toFixed(1))+'m';b.onclick=()=>setScenario(k);seg.appendChild(b)});
+  const ct=$('crewTable');if(ROSTER.length){$('crewHead').textContent=`복구팀 편성 · 총 ${ROSTER.reduce((a,r)=>a+r.count,0)}명 · ${MTH.name}`;
+    ct.innerHTML=ROSTER.map(r=>'<tr><td></td><td></td></tr>').join('');[...ct.rows].forEach((tr,i)=>{tr.cells[0].textContent=ROSTER[i].role+(ROSTER[i].note?' · '+ROSTER[i].note:'');tr.cells[1].textContent=ROSTER[i].count+'명'})}
+  else $('crewCard').hidden=true;
+  $('tgDims').classList.toggle('on',showDims);$('tgLabels').classList.toggle('on',showLabels);
+  document.querySelectorAll('#speedSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.sp===speed));
+  if(PREVIEW)BODY.classList.add('no-tip');
+  if(CFG_SRC==='local'||PREVIEW){const bd=$('cfgBadge');bd.hidden=false;bd.innerHTML=PREVIEW?'<span>편집기 미리보기 · 학습 기록 저장 안 함</span>':'<span>이 브라우저에 저장된 편집 설정 적용 중</span><a href="?cfg=default">기본값으로 보기</a>'}}
+window.addEventListener('message',e=>{const d=e.data;if(!d||typeof d!=='object')return;
+  if(d.type==='radr-jump'&&d.phase>=0&&d.phase<PH.length){if(mode!=='learn')setMode('learn');jump(d.phase);setPlay(true)}
+  if(d.type==='radr-size'&&SIZES[d.size])setScenario(d.size);
+  if(d.type==='radr-sel'&&EQ[d.k]&&!EQ[d.k].off){setMode('learn');select(d.k,true)}});
+setScenario(DEF_SIZE);resize();setPlay(true);
 // deep links from the landing page: ?size=small|medium|large &phase=0-10 &mode=learn|quiz|ai &quiz=general|english|find
-{const q=new URLSearchParams(location.search);const sz=q.get('size');if(SIZES[sz])setScenario(sz);
+{const q=new URLSearchParams(location.search);const sz=q.get('size');if(SIZES[sz]&&sz!==DEF_SIZE)setScenario(sz);
   const ph=parseInt(q.get('phase'),10);if(ph>=0&&ph<PH.length)jump(ph);
   const m=q.get('mode');if(m==='quiz'||m==='ai')setMode(m);const qs=q.get('quiz');if(m==='quiz'&&QSETS.some(s=>s.id===qs))startQuiz(qs)}
 let last=performance.now(),prevT=0,frames=0;
-function frame(now){const dt=Math.min(0.1,(now-last)/1000);last=now;
+function frame(now){const dt=Math.max(0,Math.min(0.1,(now-last)/1000));last=now;
   if(playing&&!scrubbing){t+=dt*speed;if(t>=TT){t=TT;setPlay(false);if(mode==='learn')toast('복구 완료 · 「평가」에서 배운 내용을 확인해 보세요')}}
   if(prevT<T_BLAST&&t>=T_BLAST&&playing&&!scrubbing&&t-prevT<0.5)sfx.boom(camera.position.length());prevT=t;
   computeState(t);
@@ -1928,6 +1915,38 @@ function frame(now){const dt=Math.min(0.1,(now-last)/1000);last=now;
     if(frames===2){$('loading').classList.add('gone');setTimeout(()=>$('loading').remove(),600)}}
   requestAnimationFrame(frame)}
 requestAnimationFrame(frame);
+};
+// ---------- boot: 설정을 합친 뒤 시뮬레이터 시작 ----------
+(function(){
+  const clone=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
+  function merge(a,b){if(b===undefined||b===null)return clone(a);if(a===undefined||a===null)return clone(b);
+    if(Array.isArray(a)||Array.isArray(b))return Array.isArray(b)?clone(b):clone(a);
+    if(typeof a==='object'){if(typeof b!=='object')return clone(a);const o={};new Set([...Object.keys(a),...Object.keys(b)]).forEach(k=>{o[k]=merge(a[k],b[k])});return o}
+    return typeof a===typeof b?b:a}
+  function mergeCfg(def,ov){if(!ov||typeof ov!=='object')return clone(def);const c=merge(def,ov);
+    if(ov.sizes&&typeof ov.sizes==='object'&&Object.keys(ov.sizes).length)c.sizes=clone(ov.sizes); // 규모는 통째로 교체 (삭제 반영)
+    if(Array.isArray(ov.phases)&&ov.phases.length){const byId={};def.phases.forEach(p=>byId[p.id]=p);const seen={};
+      c.phases=ov.phases.filter(p=>p&&typeof p==='object').map(p=>{const d=byId[p.id];if(d){seen[p.id]=1;return merge(d,p)}return clone(p)}); // 단계 순서·추가는 설정을 따름
+      def.phases.forEach(p=>{if(!seen[p.id])c.phases.push(Object.assign(clone(p),{on:false}))})}
+    else c.phases=clone(def.phases);
+    return c}
+  window.RADR_mergeCfg=mergeCfg;
+  const q=new URLSearchParams(location.search);const PREVIEW=q.get('preview')==='1';
+  const ls=k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null}};
+  let started=false;
+  function boot(ov,src){if(started)return;started=true;window.RADR_PREVIEW=PREVIEW;window.RADR_CFG_SRC=src;
+    try{window.RADR_CFG=mergeCfg(window.RADR_DATA,ov)}catch(e){console.error('config error, using defaults',e);window.RADR_CFG=mergeCfg(window.RADR_DATA,null);window.RADR_CFG_SRC='default'}
+    window.RADR_MAIN()}
+  if(!window.RADR_DATA){document.body.insertAdjacentHTML('beforeend','<p style="position:fixed;inset:auto 16px 16px;color:#e8705e">data.js 를 불러오지 못했습니다.</p>');return}
+  if(PREVIEW){
+    window.addEventListener('message',e=>{const d=e.data;if(d&&d.type==='radr-config')boot(d.cfg,'preview')});
+    try{if(parent!==window)parent.postMessage({type:'radr-ready'},'*')}catch(e){}
+    setTimeout(()=>boot(ls('radr.cfg.preview')||window.RADR_CONFIG,'preview'),2500);
+  }else{
+    const local=(q.get('cfg')==='default'||window.RADR_STANDALONE)?null:ls('radr.cfg');
+    const dep=q.get('cfg')==='default'?null:window.RADR_CONFIG;
+    boot(local||dep,local?'local':dep?'deployed':'default');
+  }
 })();
 </script>
 </body>
