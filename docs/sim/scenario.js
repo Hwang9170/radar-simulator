@@ -30,6 +30,10 @@ window.RADR_SCN = (() => {
     PH_IDS: ['alert', 'assess', 'debris', 'cut', 'excavate', 'backfill', 'compact', 'pour', 'cure', 'fod', 'mark'],
     // 절단 반폭 한계(m): 장비 이동로(z=28)와 지형 패치(±20 m) 안에 들어가야 함
     S_MAX: 14,
+    // 장비 종류 — 3D 모델과 대기 칸 순서가 이 순서를 따릅니다.
+    EQ_KEYS: ['eod', 'loader', 'dump', 'saw', 'excavator', 'roller', 'mixer', 'sweeper', 'painter'],
+    // 경로 좌표: m 또는 {S, R, m} = S×절단 반폭 + R×크레이터 반지름 + m (크레이터 중심 기준)
+    coord: (v, S, R) => typeof v === 'number' ? v : (v.S ? S * v.S : 0) + (v.R ? R * v.R : 0) + (v.m || 0),
     clone, mergeCfg,
   };
 })();

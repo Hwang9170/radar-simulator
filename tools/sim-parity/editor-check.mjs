@@ -41,7 +41,7 @@ async function inspect(browser, docs, draft) {
   const n = await page.$$eval('#nav button', b => b.length);
   for (let i = 0; i < n; i++) {
     await page.evaluate(i => document.querySelectorAll('#nav button')[i].click(), i);
-    const t = await page.evaluate(() => ({ name: document.querySelector('#nav .cur').textContent, html: document.getElementById('main').innerHTML, status: document.getElementById('status').textContent }));
+    const t = await page.evaluate(() => ({ name: document.querySelector('#nav .cur').lastChild.textContent /* tab name without its number */, html: document.getElementById('main').innerHTML, status: document.getElementById('status').textContent }));
     tabs[t.name] = t.html + '\n' + t.status;
   }
   await page.evaluate(() => document.getElementById('hExport').click());
@@ -57,7 +57,8 @@ let bad = 0;
 try {
   for (const [name, draft] of Object.entries(DRAFTS)) {
     const [A, B] = [await inspect(browser, docsA, draft), await inspect(browser, docsB, draft)];
-    const tabDiff = Object.keys({ ...A.tabs, ...B.tabs }).filter(k => A.tabs[k] !== B.tabs[k]);
+    const tabDiff = Object.keys(A.tabs).filter(k => A.tabs[k] !== B.tabs[k]);
+    const added = Object.keys(B.tabs).filter(k => !(k in A.tabs));
     const msgs = [];
     if (tabDiff.length) msgs.push(`tabs render differently: ${tabDiff.join(', ')}`);
     if (B.errors.length) msgs.push(`page errors: ${B.errors.join(' | ').slice(0, 300)}`);
@@ -71,7 +72,7 @@ try {
     for (const tag of ['a', 'b']) execFileSync(process.execPath, ['capture.mjs', path.join(outDir, `standalone-${name}-${tag}`, 'docs'), path.join(outDir, `standalone-${name}-${tag}`, 'cap')], { cwd: here, env, stdio: 'ignore' });
     try { execFileSync(process.execPath, ['compare.mjs', path.join(outDir, `standalone-${name}-a`, 'cap'), path.join(outDir, `standalone-${name}-b`, 'cap')], { cwd: here, env, stdio: 'pipe' }); }
     catch (e) { msgs.push('standalone export replays differently:\n' + e.stdout); }
-    console.log(`${msgs.length ? 'FAIL' : 'ok  '} editor (${name} draft): ${Object.keys(B.tabs).length} tabs identical, standalone export replays 400 frames identically${msgs.length ? '\n     ' + msgs.join('\n     ') : ''}`);
+    console.log(`${msgs.length ? 'FAIL' : 'ok  '} editor (${name} draft): ${Object.keys(A.tabs).length} tabs identical${added.length ? ` (new: ${added.join(', ')})` : ''}, standalone export replays 400 frames identically${msgs.length ? '\n     ' + msgs.join('\n     ') : ''}`);
     if (msgs.length) bad++;
   }
 } finally { await browser.close(); }
