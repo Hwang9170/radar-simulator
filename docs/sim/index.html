@@ -447,6 +447,7 @@ td .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Sky.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/geometries/RoundedBoxGeometry.js"></script>
 <script src="data.js"></script>
+<script src="scenario.js"></script>
 <script src="config.js"></script>
 <script>
 window.RADR_MAIN=function(){
@@ -482,7 +483,7 @@ const HI=QUAL==='high';
 const MTH=(()=>{const m=CFG.method||{};const slab=num(m.slab,0.45,0.15,1.2);
   return {name:str(m.name,'급속경화 콘크리트 캡 공법'),capMaterial:str(m.capMaterial,'급속경화 콘크리트'),fillMaterial:str(m.fillMaterial,'쇄석 골재'),
     slab,cap:Math.min(num(m.cap,0.30,0.05,1),slab-0.05),upFactor:num(m.upFactor,1.6,1.05,3),cutMargin:num(m.cutMargin,0.4,0,2),passes:Math.round(num(m.passes,3,1,12))}})();
-const S_MAX=14; // 절단 반폭 한계: 장비 이동로(z=28)와 지형 패치(±20 m) 안에 들어가야 함
+const S_MAX=RADR_SCN.S_MAX;
 const SIZES={};
 Object.entries(CFG.sizes||{}).forEach(([k,v])=>{if(!/^[a-z0-9_-]+$/i.test(k)||!v)return;
   const maxR=(S_MAX-0.5-MTH.cutMargin)/MTH.upFactor;const dia=Math.min(num(v.dia,7.5,1,32),maxR*2);
@@ -502,9 +503,8 @@ function makeScenario(key){
 
 // ---------- phases ----------
 const EQ_KEYS=['eod','loader','dump','saw','excavator','roller','mixer','sweeper','painter'];
-// 내장 단계 ID — 3D 애니메이션이 이 ID(=기본 순서 번호)에 연결됩니다. 순서·사용 여부는 설정에서 바꿀 수 있고,
-// 애니메이션이 없는 사용자 정의 단계도 끼워 넣을 수 있습니다.
-const PH_IDS=['alert','assess','debris','cut','excavate','backfill','compact','pour','cure','fod','mark'];
+// 내장 단계의 순서·사용 여부는 설정에서 바꿀 수 있고, 사용자 정의 단계도 끼워 넣을 수 있습니다.
+const PH_IDS=RADR_SCN.PH_IDS;
 // 사용자 정의 단계 애니메이션 레시피: {acts:[{k,pattern,reps}], crew:{count,pattern,label}, dust}
 const ACT_PATTERNS=['pass','loop','cross','standby'],CREW_PATTERNS=['patrol','line','stand'];
 function parseAnim(a){a=a&&typeof a==='object'?a:{};const seen={};
@@ -1952,26 +1952,14 @@ requestAnimationFrame(frame);
 };
 // ---------- boot: 설정을 합친 뒤 시뮬레이터 시작 ----------
 (function(){
-  const clone=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
-  function merge(a,b){if(b===undefined||b===null)return clone(a);if(a===undefined||a===null)return clone(b);
-    if(Array.isArray(a)||Array.isArray(b))return Array.isArray(b)?clone(b):clone(a);
-    if(typeof a==='object'){if(typeof b!=='object')return clone(a);const o={};new Set([...Object.keys(a),...Object.keys(b)]).forEach(k=>{o[k]=merge(a[k],b[k])});return o}
-    return typeof a===typeof b?b:a}
-  function mergeCfg(def,ov){if(!ov||typeof ov!=='object')return clone(def);const c=merge(def,ov);
-    if(ov.sizes&&typeof ov.sizes==='object'&&Object.keys(ov.sizes).length)c.sizes=clone(ov.sizes); // 규모는 통째로 교체 (삭제 반영)
-    if(Array.isArray(ov.phases)&&ov.phases.length){const byId={};def.phases.forEach(p=>byId[p.id]=p);const seen={};
-      c.phases=ov.phases.filter(p=>p&&typeof p==='object').map(p=>{const d=byId[p.id];if(d){seen[p.id]=1;return merge(d,p)}return clone(p)}); // 단계 순서·추가는 설정을 따름
-      def.phases.forEach(p=>{if(!seen[p.id])c.phases.push(Object.assign(clone(p),{on:false}))})}
-    else c.phases=clone(def.phases);
-    return c}
-  window.RADR_mergeCfg=mergeCfg;
+  const {mergeCfg}=window.RADR_SCN||{};
   const q=new URLSearchParams(location.search);const PREVIEW=q.get('preview')==='1';
   const ls=k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null}};
   let started=false;
   function boot(ov,src){if(started)return;started=true;window.RADR_PREVIEW=PREVIEW;window.RADR_CFG_SRC=src;
     try{window.RADR_CFG=mergeCfg(window.RADR_DATA,ov)}catch(e){console.error('config error, using defaults',e);window.RADR_CFG=mergeCfg(window.RADR_DATA,null);window.RADR_CFG_SRC='default'}
     window.RADR_MAIN()}
-  if(!window.RADR_DATA){document.body.insertAdjacentHTML('beforeend','<p style="position:fixed;inset:auto 16px 16px;color:#e8705e">data.js 를 불러오지 못했습니다.</p>');return}
+  if(!window.RADR_DATA||!mergeCfg){document.body.insertAdjacentHTML('beforeend','<p style="position:fixed;inset:auto 16px 16px;color:#e8705e">data.js · scenario.js 를 불러오지 못했습니다.</p>');return}
   if(PREVIEW){
     window.addEventListener('message',e=>{const d=e.data;if(d&&d.type==='radr-config')boot(d.cfg,'preview')});
     try{if(parent!==window)parent.postMessage({type:'radr-ready'},'*')}catch(e){}

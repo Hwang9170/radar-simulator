@@ -226,13 +226,13 @@ code{font-family:var(--mono);font-size:12px;background:#0e1418;border:1px solid 
 <div id="dlg" hidden><div id="dlgBox" role="dialog" aria-modal="true"><p id="dlgText"></p><div class="row" style="justify-content:flex-end"><button id="dlgNo">취소</button><button class="pri" id="dlgYes">확인</button></div></div></div>
 
 <script src="../sim/data.js"></script>
+<script src="../sim/scenario.js"></script>
 <script src="../sim/config.js"></script>
 <script>
 (function(){
 'use strict';
 // ================= 공통 =================
 const $=id=>document.getElementById(id);
-const clone=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
 const store={get(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null}},
   set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
 function h(tag,attrs,...kids){const el=document.createElement(tag);
@@ -249,21 +249,9 @@ function download(name,text,type){const b=new Blob([text],{type:type||'text/plai
 
 if(!window.RADR_DATA){document.body.innerHTML='<p style="padding:24px;color:#e8705e">../sim/data.js 를 불러오지 못했습니다. docs 폴더를 웹 서버로 열어 주세요 (예: <code>python3 -m http.server</code>).</p>';return}
 const DEF=window.RADR_DATA;
-const PH_IDS=['alert','assess','debris','cut','excavate','backfill','compact','pour','cure','fod','mark'];
+const {clone,mergeCfg,PH_IDS,S_MAX}=window.RADR_SCN;
 const BUILTIN_NAME={};DEF.phases.forEach(p=>BUILTIN_NAME[p.id]=p.title);
 
-// 시뮬레이터 boot 의 mergeCfg 와 같은 규칙
-function merge(a,b){if(b===undefined||b===null)return clone(a);if(a===undefined||a===null)return clone(b);
-  if(Array.isArray(a)||Array.isArray(b))return Array.isArray(b)?clone(b):clone(a);
-  if(typeof a==='object'){if(typeof b!=='object')return clone(a);const o={};new Set([...Object.keys(a),...Object.keys(b)]).forEach(k=>{o[k]=merge(a[k],b[k])});return o}
-  return typeof a===typeof b?b:a}
-function mergeCfg(def,ov){if(!ov||typeof ov!=='object')return clone(def);const c=merge(def,ov);
-  if(ov.sizes&&typeof ov.sizes==='object'&&Object.keys(ov.sizes).length)c.sizes=clone(ov.sizes);
-  if(Array.isArray(ov.phases)&&ov.phases.length){const byId={};def.phases.forEach(p=>byId[p.id]=p);const seen={};
-    c.phases=ov.phases.filter(p=>p&&typeof p==='object').map(p=>{const d=byId[p.id];if(d){seen[p.id]=1;return merge(d,p)}return clone(p)});
-    def.phases.forEach(p=>{if(!seen[p.id])c.phases.push(Object.assign(clone(p),{on:false}))})}
-  else c.phases=clone(def.phases);
-  return c}
 
 // ================= 상태 =================
 let cfg;
@@ -285,7 +273,6 @@ function getP(path){return path.split('.').reduce((o,k)=>o==null?o:o[k],cfg)}
 function setP(path,v){const ks=path.split('.');let o=cfg;for(let i=0;i<ks.length-1;i++){if(o[ks[i]]==null)o[ks[i]]={};o=o[ks[i]]}o[ks[ks.length-1]]=v}
 
 // ================= 계산 · 검증 =================
-const S_MAX=14;
 function derive(sz){const m=cfg.method;const R=(+sz.dia)/2;const upR=R*m.upFactor;let S=Math.ceil((upR+m.cutMargin)*2)/2;const clamped=S>S_MAX;if(clamped)S=S_MAX;
   const maxDia=2*(S_MAX-0.5-m.cutMargin)/m.upFactor;
   const slab=m.slab,cap=Math.min(m.cap,slab-0.05),depth=Math.max(+sz.depth,slab+0.2);const r0=R*Math.sqrt(Math.max(0,1-slab/depth));
@@ -559,9 +546,11 @@ $('hApply').onclick=applyLocal;
 function exportConfigJs(){download('config.js',`// RADR 시뮬레이터 배포 설정 · 유지보수 편집기에서 ${new Date().toLocaleString('ko-KR')} 내보냄\n// docs/sim/config.js 에 덮어쓰면 사이트의 시뮬레이터에 적용됩니다.\nwindow.RADR_CONFIG = ${JSON.stringify(cfg,null,2)};\n`,'text/javascript');toast('config.js 를 내려받았습니다')}
 const safeJson=o=>JSON.stringify(o).replace(/</g,'\\u003c').replace(/[\u2028\u2029]/g,c=>'\\u'+c.charCodeAt(0).toString(16));
 async function buildStandalone(){
-  const [html,data]=await Promise.all([fetch('../sim/index.html',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('sim');return r.text()}),fetch('../sim/data.js',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('data');return r.text()})]);
-  const tag=/<script src="data\.js"><\/script>\s*<script src="config\.js"><\/script>/;if(!tag.test(html))throw new Error('marker');
-  const inline=`<script>\n${data.replace(/<\/script/gi,'<\\/script')}\n<\/script>\n<script>window.RADR_STANDALONE=true;window.RADR_CONFIG=${safeJson(cfg)};<\/script>`;
+  const get=f=>fetch('../sim/'+f,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(f);return r.text()});
+  const [html,data,scn]=await Promise.all([get('index.html'),get('data.js'),get('scenario.js')]);
+  const tag=/<script src="data\.js"><\/script>\s*<script src="scenario\.js"><\/script>\s*<script src="config\.js"><\/script>/;if(!tag.test(html))throw new Error('marker');
+  const js=t=>`<script>\n${t.replace(/<\/script/gi,'<\\/script')}\n<\/script>`;
+  const inline=`${js(data)}\n${js(scn)}\n<script>window.RADR_STANDALONE=true;window.RADR_CONFIG=${safeJson(cfg)};<\/script>`;
   let out=html.replace(tag,()=>inline);
   const site=new URL('../',location.href).href;
   out=out.replace('<link rel="icon" href="../favicon.svg" type="image/svg+xml">',()=>`<link rel="icon" href="${site}favicon.svg" type="image/svg+xml">`).replace('<a class="help" href="../"',()=>`<a class="help" target="_blank" rel="noopener" href="${site}"`);
