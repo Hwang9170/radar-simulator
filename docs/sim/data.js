@@ -56,6 +56,13 @@ window.RADR_DATA = {
         "복구팀(공병)과 장비를 대기 지역에 집결"
       ],
       "equip": [],
+      "work": {
+        "blast": 0.35
+      },
+      "status": {
+        "before": "경보 발령",
+        "after": "탄착 확인 · 운용 중지"
+      },
       "tracks": []
     },
     {
@@ -77,6 +84,18 @@ window.RADR_DATA = {
       "equip": [
         "eod"
       ],
+      "work": {
+        "measure": [
+          0.3,
+          0.55
+        ],
+        "cutLine": 0.6
+      },
+      "status": {
+        "uxo": "UXO 탐지 중",
+        "measuring": "치수 측정 중",
+        "done": "MOS 선정 완료"
+      },
       "tracks": [
         {
           "k": "eod",
@@ -122,6 +141,20 @@ window.RADR_DATA = {
         "loader",
         "dump"
       ],
+      "work": {
+        "clearLeft": [
+          0.12,
+          0.36
+        ],
+        "clearRight": [
+          0.58,
+          0.82
+        ],
+        "load": [
+          0.4,
+          0.85
+        ]
+      },
       "tracks": [
         {
           "k": "loader",
@@ -312,6 +345,12 @@ window.RADR_DATA = {
       "equip": [
         "saw"
       ],
+      "work": {
+        "cut": [
+          0.12,
+          0.88
+        ]
+      },
       "tracks": [
         {
           "k": "saw",
@@ -411,6 +450,16 @@ window.RADR_DATA = {
         "excavator",
         "dump"
       ],
+      "work": {
+        "dig": [
+          0.08,
+          0.92
+        ],
+        "load": [
+          0.1,
+          0.9
+        ]
+      },
       "tracks": [
         {
           "k": "dump",
@@ -564,6 +613,15 @@ window.RADR_DATA = {
         "dump",
         "loader"
       ],
+      "work": {
+        "fill": [
+          0.25,
+          0.9
+        ]
+      },
+      "status": {
+        "drop": "골재 투하"
+      },
       "tracks": [
         {
           "k": "loader",
@@ -700,6 +758,12 @@ window.RADR_DATA = {
       "equip": [
         "roller"
       ],
+      "work": {
+        "compact": [
+          0.1,
+          0.9
+        ]
+      },
       "tracks": [
         {
           "k": "roller",
@@ -797,6 +861,12 @@ window.RADR_DATA = {
       "equip": [
         "mixer"
       ],
+      "work": {
+        "pour": [
+          0.12,
+          0.88
+        ]
+      },
       "tracks": [
         {
           "k": "mixer",
@@ -868,6 +938,12 @@ window.RADR_DATA = {
         "강도 확인 (재료에 따라 약 1~2시간, 예시)"
       ],
       "equip": [],
+      "work": {
+        "cure": [
+          0,
+          1
+        ]
+      },
       "tracks": []
     },
     {
@@ -887,6 +963,12 @@ window.RADR_DATA = {
       "equip": [
         "sweeper"
       ],
+      "work": {
+        "sweep": [
+          0.08,
+          0.92
+        ]
+      },
       "tracks": [
         {
           "k": "sweeper",
@@ -1003,6 +1085,17 @@ window.RADR_DATA = {
       "equip": [
         "painter"
       ],
+      "work": {
+        "paint": [
+          0.1,
+          0.45
+        ]
+      },
+      "status": {
+        "painting": "도색",
+        "check": "최종 점검",
+        "done": "이륙 · 운용 재개"
+      },
       "tracks": [
         {
           "k": "painter",
