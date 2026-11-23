@@ -359,57 +359,92 @@ const SVGNS='http://www.w3.org/2000/svg';
 function sv(tag,attrs,...kids){const el=document.createElementNS(SVGNS,tag);for(const k in attrs||{})if(attrs[k]!==undefined&&attrs[k]!==null)el.setAttribute(k,attrs[k]);
   kids.flat().forEach(c=>{if(c!==null&&c!==undefined&&c!==false)el.appendChild(typeof c==='string'?document.createTextNode(c):c)});return el}
 let layPhase=null,laySize=null;
+// 시뮬레이터가 받아들이는 범위 (docs/sim/index.html 의 SITE · CX 와 같음)
+const SITE_LIM={x:[-2000,2000],z:[10,400],spacing:[4,40],lane:[16,400],length:[400,4000],width:[41,150]};
+const clampTo=(v,[a,b])=>Math.max(a,Math.min(b,v)),snap=v=>Math.round(v*2)/2;
+const craterLim=()=>{const h=cfg.site.runway.length/2-60;return [-h,h]};
+function damage0(){if(!Array.isArray(cfg.damages)||!cfg.damages[0])cfg.damages=[{id:'c1',x:0}];return cfg.damages[0]}
 // 평면도는 시뮬레이터의 3D 장면과 같은 좌표(크레이터 중심 원점, x = 활주로 방향, z = 대기 지역 쪽 +)를 위에서 내려다봅니다.
 function planGeometry(sizeKey){
   const st=cfg.site.staging,rw=cfg.site.runway,d=derive(cfg.sizes[sizeKey]);const R=Math.min(d.R,d.maxDia/2);
   const keys=RADR_SCN.EQ_KEYS,park=k=>({x:st.x+keys.indexOf(k)*st.spacing,z:st.z});
-  return {st,rw,S:d.S,R,upR:R*cfg.method.upFactor,keys,park,cx:+((cfg.damages||[])[0]||{}).x||0};
+  return {st,rw,S:d.S,R,upR:R*cfg.method.upFactor,keys,park,lastX:st.x+(keys.length-1)*st.spacing,cx:+damage0().x||0};
 }
 function routeOf(G,tr){const c=v=>RADR_SCN.coord(v,G.S,G.R),p=G.park(tr.k);
   return [{x:p.x,z:p.z},{x:p.x,z:G.st.lane},...tr.keys.map(q=>({x:c(q.x),z:c(q.z),u:q.u,rev:!!q.rev,key:true})),{x:p.x,z:G.st.lane},{x:p.x,z:p.z}]}
-VIEWS.layout=m=>{
-  const sizeKeys=Object.keys(cfg.sizes);if(!sizeKeys.includes(laySize))laySize=sizeKeys.includes(cfg.defaultSize)?cfg.defaultSize:sizeKeys[0];
-  const withTracks=visPhases().filter(p=>Array.isArray(p.tracks)&&p.tracks.length);if(!withTracks.some(p=>p.id===layPhase))layPhase=withTracks.length?withTracks[0].id:null;
-  const ph=cfg.phases.find(p=>p.id===layPhase),items=cfg.equipment.items;
-  const G=planGeometry(laySize),{st,rw,S,R,upR,keys,park}=G;const lastX=st.x+(keys.length-1)*st.spacing;
-  const x0=Math.min(st.x-14,-S-22),x1=Math.max(lastX+14,S+22),z0=-rw.width/2-9,z1=st.z+13;
-  const svg=sv('svg',{class:'plan',viewBox:`${x0} ${z0} ${x1-x0} ${z1-z0}`,role:'img','aria-label':'작업 구역 평면도'});
+function drawPlan(svg,box,ph){
+  const G=planGeometry(laySize),{st,rw,S,R,upR,keys,park,lastX}=G,items=cfg.equipment.items,[x0,z0,x1,z1]=box;
   const grid=[];for(let x=Math.ceil(x0/10)*10;x<=x1;x+=10)grid.push(sv('line',{x1:x,y1:z0,x2:x,y2:z1,stroke:'#ffffff',opacity:x===0?.18:.06,'stroke-width':.15}));
   for(let z=Math.ceil(z0/10)*10;z<=z1;z+=10)grid.push(sv('line',{x1:x0,y1:z,x2:x1,y2:z,stroke:'#ffffff',opacity:z===0?.18:.06,'stroke-width':.15}));
   const dashOff=(((x0+G.cx+1000)%50)+50)%50;
-  svg.append(
+  const kids=[
     sv('rect',{x:x0,y:z0,width:x1-x0,height:z1-z0,fill:'#26321f'}),
     sv('rect',{x:x0,y:-rw.width/2-6,width:x1-x0,height:rw.width+12,fill:'#34383a'}),
     sv('rect',{x:x0,y:-rw.width/2,width:x1-x0,height:rw.width,fill:'#5d605d'}),
-    sv('rect',{x:st.x-12,y:st.lane+0.5,width:lastX-st.x+24,height:st.z+10-st.lane-0.5,fill:'#4b4e4b'}),
+    sv('rect',{x:st.x-12,y:st.lane+0.5,width:lastX-st.x+24,height:Math.max(0,st.z+10-st.lane-0.5),fill:'#4b4e4b'}),
     sv('line',{x1:x0,y1:0,x2:x1,y2:0,stroke:'#e4e4de','stroke-width':.9,'stroke-dasharray':'30 20','stroke-dashoffset':dashOff,opacity:.8}),
     ...[-1,1].map(s=>sv('line',{x1:x0,y1:s*(rw.width/2-0.75),x2:x1,y2:s*(rw.width/2-0.75),stroke:'#e4e4de','stroke-width':.9,opacity:.7})),
     ...grid,
-    sv('line',{x1:x0,y1:st.lane,x2:x1,y2:st.lane,stroke:'#f0b429','stroke-width':.25,'stroke-dasharray':'1.2 1',opacity:.8}),
-    sv('text',{x:x0+1,y:st.lane-0.8,fill:'#f0b429','font-size':1.6},`이동로 z ${fmt(st.lane)}`),
+    sv('g',{'data-drag':'lane',style:'cursor:ns-resize'},sv('line',{x1:x0,y1:st.lane,x2:x1,y2:st.lane,stroke:'transparent','stroke-width':2.4}),
+      sv('line',{x1:x0,y1:st.lane,x2:x1,y2:st.lane,stroke:'#f0b429','stroke-width':.25,'stroke-dasharray':'1.2 1',opacity:.8})),
+    sv('text',{x:x0+1,y:st.lane-0.8,fill:'#f0b429','font-size':1.6},`이동로 z ${fmt(st.lane)} m · 끌어서 이동`),
     sv('circle',{cx:0,cy:0,r:upR,fill:'none',stroke:'#ffffff','stroke-width':.2,'stroke-dasharray':'.8 .6',opacity:.6}),
     sv('circle',{cx:0,cy:0,r:R,fill:'#1c1916',stroke:'#f0b429','stroke-width':.3}),
     sv('rect',{x:-S,y:-S,width:2*S,height:2*S,fill:'none',stroke:'#ffffff','stroke-width':.3,'stroke-dasharray':'1 .7'}),
-    sv('text',{x:S+0.6,y:-S-0.8,fill:'#e3e9ec','font-size':1.6},`절단선 ${fmt(2*S)} × ${fmt(2*S)} m`));
-  keys.forEach(k=>{const it=items[k]||{},p=park(k),on=it.on!==false;
-    svg.append(sv('g',{opacity:on?1:.35},sv('rect',{x:p.x-1.6,y:p.z-3,width:3.2,height:6,rx:.5,fill:it.color||'#888',stroke:'#0b1013','stroke-width':.2}),
+    sv('text',{x:S+0.6,y:-S-0.8,fill:'#e3e9ec','font-size':1.6},`절단선 ${fmt(2*S)} × ${fmt(2*S)} m`)];
+  const slots=sv('g',{'data-drag':'staging',style:'cursor:move'});
+  keys.forEach(k=>{const it=items[k]||{},p=park(k);
+    slots.append(sv('g',{opacity:it.on!==false?1:.35},sv('rect',{x:p.x-1.6,y:p.z-3,width:3.2,height:6,rx:.5,fill:it.color||'#888',stroke:'#0b1013','stroke-width':.2}),
       sv('text',{x:p.x,y:p.z+5.2,fill:'#c7d1d6','font-size':1.3,'text-anchor':'middle'},it.short||k)))});
-  const legend=h('div',{class:'legend'});
+  slots.append(sv('text',{x:st.x-1.6,y:st.z-4.2,fill:'#c7d1d6','font-size':1.4},`장비 대기 지역 (${fmt(st.x)}, ${fmt(st.z)}) · 끌어서 이동`));
+  kids.push(slots);
   if(ph)ph.tracks.forEach(tr=>{const it=items[tr.k]||{};if(it.on===false)return;const col=it.color||'#f0b429';const pts=routeOf(G,tr);
-    svg.append(sv('polyline',{points:pts.map(q=>`${q.x},${q.z}`).join(' '),fill:'none',stroke:col,'stroke-width':.35,'stroke-linejoin':'round',opacity:.9}));
-    pts.filter(q=>q.key).forEach(q=>svg.append(sv('circle',{cx:q.x,cy:q.z,r:.55,fill:q.rev?'#0b1013':col,stroke:col,'stroke-width':.25}),
-      sv('text',{x:q.x+.8,y:q.z-.7,fill:col,'font-size':1.1},String(q.u))));
-    legend.append(h('span',null,h('i',{class:'sw',style:`background:${col}`}),`${it.name||tr.k} · 단계의 ${Math.round(tr.from*100)}~${Math.round(tr.to*100)}%`))});
-  // 활주로 전체에서 피해 지점 위치
-  const L=rw.length,W=rw.width;const mini=sv('svg',{class:'plan',viewBox:`${-L/2-20} ${-W/2-14} ${L+40} ${W+28}`,role:'img','aria-label':'활주로 전체와 피해 지점'},
-    sv('rect',{x:-L/2-20,y:-W/2-14,width:L+40,height:W+28,fill:'#26321f'}),sv('rect',{x:-L/2,y:-W/2,width:L,height:W,fill:'#5d605d'}),
-    sv('circle',{cx:G.cx,cy:0,r:Math.max(6,R),fill:'#f0b429'}),sv('text',{x:G.cx,y:-W/2-3,fill:'#f0b429','font-size':10,'text-anchor':'middle'},`피해 지점 x ${fmt(G.cx)} m`));
+    kids.push(sv('polyline',{points:pts.map(q=>`${q.x},${q.z}`).join(' '),fill:'none',stroke:col,'stroke-width':.35,'stroke-linejoin':'round',opacity:.9,'pointer-events':'none'}));
+    pts.filter(q=>q.key).forEach(q=>kids.push(sv('circle',{cx:q.x,cy:q.z,r:.55,fill:q.rev?'#0b1013':col,stroke:col,'stroke-width':.25,'pointer-events':'none'}),
+      sv('text',{x:q.x+.8,y:q.z-.7,fill:col,'font-size':1.1,'pointer-events':'none'},String(q.u))))});
+  svg.replaceChildren(...kids);
+}
+function drawMini(svg){const G=planGeometry(laySize),L=G.rw.length,W=G.rw.width,[a,b]=craterLim();
+  svg.replaceChildren(sv('rect',{x:-L/2-20,y:-W/2-14,width:L+40,height:W+28,fill:'#26321f'}),sv('rect',{x:-L/2,y:-W/2,width:L,height:W,fill:'#5d605d'}),
+    sv('rect',{x:a,y:-1,width:b-a,height:2,fill:'#f0b429',opacity:.25}),
+    sv('g',{'data-drag':'crater',style:'cursor:ew-resize'},sv('circle',{cx:G.cx,cy:0,r:Math.max(8,G.R),fill:'#f0b429'}),
+      sv('text',{x:G.cx,y:-W/2-3,fill:'#f0b429','font-size':10,'text-anchor':'middle'},`피해 지점 x ${fmt(G.cx)} m · 끌어서 이동`)))}
+function svgPoint(svg,e){const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());return {x:q.x,z:q.y}}
+// 끌기: 누른 점과 시작 값을 기억했다가 움직이는 동안 값을 바꾸고 다시 그림. 놓으면 changed(true) 로 저장 · 되돌리기 · 3D 미리보기에 반영
+const DRAG={
+  staging:(s,d)=>{const st=cfg.site.staging;st.x=clampTo(snap(s.x+d.x),SITE_LIM.x);st.z=clampTo(snap(s.z+d.z),SITE_LIM.z)},
+  lane:(s,d)=>{cfg.site.staging.lane=clampTo(snap(s.lane+d.z),SITE_LIM.lane)},
+  crater:(s,d)=>{damage0().x=clampTo(snap(s.cx+d.x),craterLim())},
+};
+function draggable(svg,redraw){let drag=null;
+  svg.addEventListener('pointerdown',e=>{const t=e.target.closest('[data-drag]');if(!t)return;e.preventDefault();svg.setPointerCapture(e.pointerId);
+    const st=cfg.site.staging;drag={kind:t.dataset.drag,p0:svgPoint(svg,e),s:{x:st.x,z:st.z,lane:st.lane,cx:+damage0().x||0}}});
+  svg.addEventListener('pointermove',e=>{if(!drag)return;const p=svgPoint(svg,e);DRAG[drag.kind](drag.s,{x:p.x-drag.p0.x,z:p.z-drag.p0.z});redraw()});
+  const end=()=>{if(!drag)return;drag=null;changed(true)};svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end)}
+VIEWS.layout=m=>{
+  const sizeKeys=Object.keys(cfg.sizes);if(!sizeKeys.includes(laySize))laySize=sizeKeys.includes(cfg.defaultSize)?cfg.defaultSize:sizeKeys[0];
+  const withTracks=visPhases().filter(p=>Array.isArray(p.tracks)&&p.tracks.length);if(!withTracks.some(p=>p.id===layPhase))layPhase=withTracks.length?withTracks[0].id:null;
+  const ph=cfg.phases.find(p=>p.id===layPhase),items=cfg.equipment.items,G=planGeometry(laySize);
+  // 화면 범위는 그릴 때 한 번 정하고, 끄는 동안에는 고정 (좌표 변환이 흔들리지 않게)
+  const box=[Math.min(G.st.x-14,-G.S-22),-G.rw.width/2-9,Math.max(G.lastX+14,G.S+22),Math.max(G.st.z+13,G.st.lane+6)];
+  const svg=sv('svg',{class:'plan',viewBox:`${box[0]} ${box[1]} ${box[2]-box[0]} ${box[3]-box[1]}`,role:'img','aria-label':'작업 구역 평면도'});
+  const L=G.rw.length,W=G.rw.width;const mini=sv('svg',{class:'plan',viewBox:`${-L/2-20} ${-W/2-14} ${L+40} ${W+28}`,role:'img','aria-label':'활주로 전체와 피해 지점'});
+  const redraw=()=>{drawPlan(svg,box,ph);drawMini(mini)};redraw();draggable(svg,redraw);draggable(mini,redraw);
+  const legend=h('div',{class:'legend'});
+  if(ph)ph.tracks.forEach(tr=>{const it=items[tr.k]||{};if(it.on===false)return;
+    legend.append(h('span',null,h('i',{class:'sw',style:`background:${it.color||'#f0b429'}`}),`${it.name||tr.k} · 단계의 ${Math.round(tr.from*100)}~${Math.round(tr.to*100)}%`))});
   const ps=h('select',{'aria-label':'단계'});withTracks.forEach(p=>ps.appendChild(h('option',{value:p.id,text:`${String(visPhases().indexOf(p)).padStart(2,'0')} ${p.title}`})));ps.value=layPhase||'';ps.onchange=()=>{layPhase=ps.value;render()};
   const ss=h('select',{'aria-label':'크레이터 규모'});sizeKeys.forEach(k=>ss.appendChild(h('option',{value:k,text:`${cfg.sizes[k].label} (Ø${cfg.sizes[k].dia} m)`})));ss.value=laySize;ss.onchange=()=>{laySize=ss.value;render()};
-  m.append(h('h2',{text:'배치 · 평면도'}),h('p',{class:'lead',text:'작업 구역을 위에서 내려다본 그림입니다. 크레이터 중심이 원점이고, 칸 하나는 10 m 입니다. 고른 단계에서 장비가 대기 칸을 나와 이동로를 거쳐 움직이는 경로를 보여 줍니다. 경로의 숫자는 단계 안의 시점(0~1)이고, 속이 빈 점은 후진입니다.'}),
-    card('작업 구역',null,h('div',{class:'grid'},h('label',{class:'f'},h('span',{text:'단계'}),ps),h('label',{class:'f'},h('span',{text:'크레이터 규모'}),ss)),svg,legend,
+  damage0();const [ca,cb]=craterLim(),n=(label,path,lim,o)=>numF(label,path,Object.assign({min:lim[0],max:lim[1],step:0.5,unit:'m',after:redraw},o||{}));
+  m.append(h('h2',{text:'배치 · 평면도'}),h('p',{class:'lead',text:'작업 구역을 위에서 내려다본 그림입니다. 크레이터 중심이 원점이고, 칸 하나는 10 m 입니다. 장비 대기 지역과 이동로는 끌어서, 피해 지점은 아래 활주로 전체 그림에서 끌어서 옮깁니다(0.5 m 단위). 경로의 숫자는 단계 안의 시점(0~1)이고, 속이 빈 점은 후진입니다.'}),
+    card('작업 구역',null,h('div',{class:'grid'},h('label',{class:'f'},h('span',{text:'경로를 볼 단계'}),ps),h('label',{class:'f'},h('span',{text:'크레이터 규모'}),ss)),svg,legend,
       h('div',{class:'row'},h('button',{disabled:!ph,onclick:()=>pvJump(visPhases().indexOf(ph))},'3D에서 이 단계 보기'))),
-    card('활주로 전체',`길이 ${fmt(L,0)} m · 폭 ${fmt(W,0)} m`,mini));
+    card('활주로 전체',`길이 ${fmt(L,0)} m · 폭 ${fmt(W,0)} m`,mini),
+    card('현장 수치','끌기와 같은 값',h('div',{class:'grid'},
+      n('피해 지점 x (활주로 중심에서)','damages.0.x',[ca,cb]),
+      n('대기 칸 첫 x (크레이터 기준)','site.staging.x',SITE_LIM.x),n('대기 칸 z (크레이터 기준)','site.staging.z',SITE_LIM.z),
+      n('대기 칸 간격','site.staging.spacing',SITE_LIM.spacing),n('이동로 z','site.staging.lane',SITE_LIM.lane),
+      n('활주로 길이','site.runway.length',SITE_LIM.length,{step:10,structural:true}),n('활주로 폭','site.runway.width',SITE_LIM.width,{step:1,structural:true}))));
 };
 // ---------- 크레이터 규모 ----------
 VIEWS.sizes=m=>{
