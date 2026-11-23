@@ -358,7 +358,7 @@ VIEWS.overview=m=>{
 const SVGNS='http://www.w3.org/2000/svg';
 function sv(tag,attrs,...kids){const el=document.createElementNS(SVGNS,tag);for(const k in attrs||{})if(attrs[k]!==undefined&&attrs[k]!==null)el.setAttribute(k,attrs[k]);
   kids.flat().forEach(c=>{if(c!==null&&c!==undefined&&c!==false)el.appendChild(typeof c==='string'?document.createTextNode(c):c)});return el}
-let layPhase=null,laySize=null,selKey=null; // selKey: 고른 경로 점 {ti, ki}
+let layPhase=null,laySize=null,selKey=null,layT=null; // selKey: 고른 경로 점 {ti, ki}, layT: 타임라인 재생 위치(초)
 // 시뮬레이터가 받아들이는 범위 (docs/sim/index.html 의 SITE · CX 와 같음)
 const SITE_LIM={x:[-2000,2000],z:[10,400],spacing:[4,40],lane:[16,400],length:[400,4000],width:[41,150]};
 const clampTo=(v,[a,b])=>Math.max(a,Math.min(b,v)),snap=v=>Math.round(v*2)/2;
@@ -372,6 +372,23 @@ function planGeometry(sizeKey){
 }
 function routeOf(G,tr){const c=v=>RADR_SCN.coord(v,G.S,G.R),p=G.park(tr.k);
   return [{x:p.x,z:p.z},{x:p.x,z:G.st.lane},...tr.keys.map(q=>({x:c(q.x),z:c(q.z),u:q.u,rev:!!q.rev,key:true})),{x:p.x,z:G.st.lane},{x:p.x,z:p.z}]}
+// 타임라인: 보이는 단계들을 애니메이션 길이(초) 순서대로 이어 붙인 것
+function spans(){let s=0;return visPhases().map((p,i)=>{const o={p,i,s,d:+p.dur||0};s+=o.d;return o})}
+const spanAt=t=>{const sp=spans();return sp.find(o=>t<o.s+o.d)||sp[sp.length-1]};
+// 고른 시점의 장비 위치 (시뮬레이터 경로를 근사: 대기 칸 → 이동로 1초, 경로 점 사이는 부드럽게 또는 직선)
+function ghosts(G,ph,u){const c=v=>RADR_SCN.coord(v,G.S,G.R),e=1/Math.max(1,+ph.dur||1);
+  return ph.tracks.map(tr=>{if(u<tr.from||u>tr.to)return null;const p=G.park(tr.k);
+    const pts=[{u:tr.from,x:p.x,z:p.z},{u:tr.from+e,x:p.x,z:G.st.lane},...tr.keys.map(q=>({u:q.u,x:c(q.x),z:c(q.z),lin:q.lin})),{u:tr.to-e,x:p.x,z:G.st.lane},{u:tr.to,x:p.x,z:p.z}];
+    for(let i=0;i<pts.length-1;i++){const A=pts[i],B=pts[i+1];if(u<=B.u){const k=B.u>A.u?Math.max(0,Math.min(1,(u-A.u)/(B.u-A.u))):1,w=B.lin?k:k*k*(3-2*k);
+      return {k:tr.k,x:A.x+(B.x-A.x)*w,z:A.z+(B.z-A.z)*w}}}return null}).filter(Boolean)}
+function drawTimeline(svg,scale){const sp=spans(),kids=[];
+  sp.forEach(o=>{const x=o.s*scale,w=o.d*scale,cur=o.p.id===layPhase,pi=cfg.phases.indexOf(o.p);
+    kids.push(sv('rect',{x,y:4,width:Math.max(1,w-1.5),height:26,rx:2,fill:cur?'#3a3220':'#22303a',stroke:cur?'#f0b429':'none','stroke-width':1,'data-drag':'head',style:'cursor:pointer'}),
+      sv('text',{x:x+4,y:15,fill:'#c7d1d6','font-size':9,'pointer-events':'none'},String(o.i).padStart(2,'0')),
+      sv('text',{x:x+4,y:26,fill:'#8fa0aa','font-size':8,'pointer-events':'none'},`${fmt(o.d,0)}s`),
+      sv('rect',{x:x+w-6,y:4,width:7,height:26,fill:'#f0b429',opacity:.35,'data-drag':'dur','data-pi':pi,style:'cursor:ew-resize'}))});
+  if(layT!==null)kids.push(sv('line',{x1:layT*scale,y1:0,x2:layT*scale,y2:34,stroke:'#ffffff','stroke-width':2,'pointer-events':'none'}));
+  svg.replaceChildren(...kids)}
 function drawPlan(svg,box,ph){
   const G=planGeometry(laySize),{st,rw,S,R,upR,keys,park,lastX}=G,items=cfg.equipment.items,[x0,z0,x1,z1]=box;
   const grid=[];for(let x=Math.ceil(x0/10)*10;x<=x1;x+=10)grid.push(sv('line',{x1:x,y1:z0,x2:x,y2:z1,stroke:'#ffffff',opacity:x===0?.18:.06,'stroke-width':.15}));
@@ -405,6 +422,9 @@ function drawPlan(svg,box,ph){
         sel?sv('circle',{cx:q.x,cy:q.z,r:1.15,fill:'none',stroke:'#ffffff','stroke-width':.3}):null,
         sv('circle',{cx:q.x,cy:q.z,r:.55,fill:q.rev?'#0b1013':col,stroke:col,'stroke-width':.25})),
         sv('text',{x:q.x+.8,y:q.z-.7,fill:col,'font-size':1.1,'pointer-events':'none'},String(q.u)))})});
+  const span=ph&&layT!==null?spans().find(o=>o.p===ph):null;
+  if(span&&layT>=span.s&&layT<=span.s+span.d)ghosts(G,ph,(layT-span.s)/span.d).forEach(g=>{const it=items[g.k]||{};
+    kids.push(sv('rect',{x:g.x-1.6,y:g.z-3,width:3.2,height:6,rx:.5,fill:it.color||'#888',opacity:.85,stroke:'#ffffff','stroke-width':.25,'pointer-events':'none'}))});
   svg.replaceChildren(...kids);
 }
 function drawMini(svg){const G=planGeometry(laySize),L=G.rw.length,W=G.rw.width,[a,b]=craterLim();
@@ -419,6 +439,9 @@ const moveCoord=(v,dv)=>typeof v==='number'?v+snap(dv):Object.assign({},v,{m:(v.
 const layPh=()=>cfg.phases.find(p=>p.id===layPhase);
 const keyAt=(ti,ki)=>layPh().tracks[ti].keys[ki];
 const DRAG={
+  dur:(s,d)=>{cfg.phases[s.pi].dur=Math.max(4,Math.min(120,Math.round(s.dur+d.x/s.scale)))},
+  head:(s,d)=>{const tt=spans().reduce((a,o)=>a+o.d,0);layT=Math.max(0,Math.min(tt-0.001,s.t+d.x/s.scale));const o=spanAt(layT);
+    if(o&&o.p.id!==layPhase&&Array.isArray(o.p.tracks)&&o.p.tracks.length){layPhase=o.p.id;selKey=null}},
   key:(s,d)=>{const q=keyAt(s.ti,s.ki);q.x=moveCoord(s.q0.x,d.x);q.z=moveCoord(s.q0.z,d.z)},
   staging:(s,d)=>{const st=cfg.site.staging;st.x=clampTo(snap(s.x+d.x),SITE_LIM.x);st.z=clampTo(snap(s.z+d.z),SITE_LIM.z)},
   lane:(s,d)=>{cfg.site.staging.lane=clampTo(snap(s.lane+d.z),SITE_LIM.lane)},
@@ -428,10 +451,15 @@ function draggable(svg,redraw){let drag=null;
   svg.addEventListener('pointerdown',e=>{const t=e.target.closest('[data-drag]');if(!t)return;e.preventDefault();svg.setPointerCapture(e.pointerId);
     const st=cfg.site.staging,ti=+t.dataset.ti,ki=+t.dataset.ki;
     if(t.dataset.drag==='key')selKey={ti,ki};
-    drag={kind:t.dataset.drag,p0:svgPoint(svg,e),moved:false,s:{x:st.x,z:st.z,lane:st.lane,cx:+damage0().x||0,ti,ki,q0:t.dataset.drag==='key'?clone(keyAt(ti,ki)):null}};redraw()});
+    const p0=svgPoint(svg,e),scale=+svg.dataset.scale||1,pi=+t.dataset.pi;
+    drag={kind:t.dataset.drag,p0,moved:false,s:{x:st.x,z:st.z,lane:st.lane,cx:+damage0().x||0,ti,ki,q0:t.dataset.drag==='key'?clone(keyAt(ti,ki)):null,
+      scale,pi,dur:pi>=0?+cfg.phases[pi].dur:0,t:p0.x/scale}};
+    if(drag.kind==='head'){DRAG.head(drag.s,{x:0,z:0});drag.moved=true}redraw()});
   svg.addEventListener('pointermove',e=>{if(!drag)return;const p=svgPoint(svg,e),d={x:p.x-drag.p0.x,z:p.z-drag.p0.z};if(!drag.moved&&Math.hypot(d.x,d.z)<0.25)return;
     drag.moved=true;DRAG[drag.kind](drag.s,d);redraw()});
-  const end=()=>{if(!drag)return;const moved=drag.moved;drag=null;if(moved)changed(true);else render()};svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end)}
+  const end=()=>{if(!drag)return;const {moved,kind}=drag;drag=null;
+    if(kind==='head'){const o=spanAt(layT);if(o){pvPhase=o.i;post({type:'radr-jump',phase:o.i,pu:(layT-o.s)/o.d})}render();return}
+    if(moved)changed(true);else render()};svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end)}
 // 고른 경로 점의 속성: 시점 u, 후진, 직선 이동, 좌표 방식. 점 추가 · 삭제
 const coordText=v=>typeof v==='number'?`${fmt(v,2)} m (고정)`:[v.S?`${v.S}×S`:'',v.R?`${v.R}×R`:'',v.m?`${v.m>0&&(v.S||v.R)?'+':''}${fmt(v.m,2)} m`:''].filter(Boolean).join(' ')||'0';
 function keyInspector(G){const ph=layPh();if(!ph||!selKey)return null;const tr=ph.tracks[selKey.ti],q=tr&&tr.keys[selKey.ki];if(!q){selKey=null;return null}
@@ -458,7 +486,10 @@ VIEWS.layout=m=>{
   const box=[Math.min(G.st.x-14,-G.S-22),-G.rw.width/2-9,Math.max(G.lastX+14,G.S+22),Math.max(G.st.z+13,G.st.lane+6)];
   const svg=sv('svg',{class:'plan',viewBox:`${box[0]} ${box[1]} ${box[2]-box[0]} ${box[3]-box[1]}`,role:'img','aria-label':'작업 구역 평면도'});
   const L=G.rw.length,W=G.rw.width;const mini=sv('svg',{class:'plan',viewBox:`${-L/2-20} ${-W/2-14} ${L+40} ${W+28}`,role:'img','aria-label':'활주로 전체와 피해 지점'});
-  const redraw=()=>{drawPlan(svg,box,ph);drawMini(mini)};redraw();draggable(svg,redraw);draggable(mini,redraw);
+  const tt=spans().reduce((a,o)=>a+o.d,0),scale=1000/Math.max(1,tt);
+  const tl=sv('svg',{class:'plan',viewBox:'0 0 1000 34','data-scale':scale,role:'img','aria-label':'단계 타임라인'});
+  const redraw=()=>{drawPlan(svg,box,layPh());drawMini(mini);drawTimeline(tl,scale)};redraw();draggable(svg,redraw);draggable(mini,redraw);draggable(tl,redraw);
+  const tInfo=layT===null?'타임라인을 누르거나 끌면 그 시점의 장비 위치가 평면도에 표시되고, 3D 미리보기도 그 장면으로 이동합니다.':(()=>{const o=spanAt(layT);return `T+${fmt(layT,1)}초 · ${String(o.i).padStart(2,'0')} ${o.p.title} · 단계의 ${Math.round((layT-o.s)/o.d*100)}%`})();
   const legend=h('div',{class:'legend'});
   if(ph)ph.tracks.forEach(tr=>{const it=items[tr.k]||{};if(it.on===false)return;
     legend.append(h('span',null,h('i',{class:'sw',style:`background:${it.color||'#f0b429'}`}),`${it.name||tr.k} · 단계의 ${Math.round(tr.from*100)}~${Math.round(tr.to*100)}%`))});
@@ -467,8 +498,9 @@ VIEWS.layout=m=>{
   damage0();const [ca,cb]=craterLim(),n=(label,path,lim,o)=>numF(label,path,Object.assign({min:lim[0],max:lim[1],step:0.5,unit:'m',after:redraw},o||{}));
   m.append(h('h2',{text:'배치 · 평면도'}),h('p',{class:'lead',text:'작업 구역을 위에서 내려다본 그림입니다. 크레이터 중심이 원점이고, 칸 하나는 10 m 입니다. 장비 대기 지역 · 이동로 · 경로 점은 끌어서, 피해 지점은 아래 활주로 전체 그림에서 끌어서 옮깁니다(0.5 m 단위). 경로 점을 누르면 시점 · 후진 · 추가 · 삭제를 고칠 수 있습니다. 경로의 숫자는 단계 안의 시점(0~1)이고, 속이 빈 점은 후진입니다.'}),
     card('작업 구역',null,h('div',{class:'grid'},h('label',{class:'f'},h('span',{text:'경로를 볼 단계'}),ps),h('label',{class:'f'},h('span',{text:'크레이터 규모'}),ss)),svg,legend,
+      h('div',{class:'f'},h('span',null,'타임라인 · 블록 오른쪽 끝을 끌면 단계 길이(초)가 바뀝니다',h('em',{text:`총 ${fmt(tt,0)}초`})),tl,h('p',{class:'note',text:tInfo})),
       h('div',{class:'row'},h('button',{disabled:!ph,onclick:()=>pvJump(visPhases().indexOf(ph))},'3D에서 이 단계 보기'))),
-    keyInspector(G),
+    keyInspector(G)||'', // 고른 점이 없으면 아무것도 넣지 않음 (append(null) 은 "null" 글자를 넣음)
     card('활주로 전체',`길이 ${fmt(L,0)} m · 폭 ${fmt(W,0)} m`,mini),
     card('현장 수치','끌기와 같은 값',h('div',{class:'grid'},
       n('피해 지점 x (활주로 중심에서)','damages.0.x',[ca,cb]),

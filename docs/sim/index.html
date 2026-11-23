@@ -1934,7 +1934,7 @@ const ROSTER=(Array.isArray(CRW.roster)?CRW.roster:[]).filter(r=>r&&r.role).map(
   if(PREVIEW)BODY.classList.add('no-tip');
   if(CFG_SRC==='local'||PREVIEW){const bd=$('cfgBadge');bd.hidden=false;bd.innerHTML=PREVIEW?'<span>편집기 미리보기 · 학습 기록 저장 안 함</span>':'<span>이 브라우저에 저장된 편집 설정 적용 중</span><a href="?cfg=default">기본값으로 보기</a>'}}
 window.addEventListener('message',e=>{const d=e.data;if(!d||typeof d!=='object')return;
-  if(d.type==='radr-jump'&&d.phase>=0&&d.phase<PH.length){if(mode!=='learn')setMode('learn');jump(d.phase);setPlay(true)}
+  if(d.type==='radr-jump'&&d.phase>=0&&d.phase<PH.length){if(mode!=='learn')setMode('learn');const pu=d.pu>0&&d.pu<1?d.pu:undefined;jump(d.phase,pu);setPlay(pu===undefined)}
   if(d.type==='radr-size'&&SIZES[d.size])setScenario(d.size);
   if(d.type==='radr-sel'&&EQ[d.k]&&!EQ[d.k].off){setMode('learn');select(d.k,true)}});
 setScenario(DEF_SIZE);resize();setPlay(true);
