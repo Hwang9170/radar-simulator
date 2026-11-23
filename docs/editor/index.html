@@ -358,7 +358,7 @@ VIEWS.overview=m=>{
 const SVGNS='http://www.w3.org/2000/svg';
 function sv(tag,attrs,...kids){const el=document.createElementNS(SVGNS,tag);for(const k in attrs||{})if(attrs[k]!==undefined&&attrs[k]!==null)el.setAttribute(k,attrs[k]);
   kids.flat().forEach(c=>{if(c!==null&&c!==undefined&&c!==false)el.appendChild(typeof c==='string'?document.createTextNode(c):c)});return el}
-let layPhase=null,laySize=null;
+let layPhase=null,laySize=null,selKey=null; // selKey: 고른 경로 점 {ti, ki}
 // 시뮬레이터가 받아들이는 범위 (docs/sim/index.html 의 SITE · CX 와 같음)
 const SITE_LIM={x:[-2000,2000],z:[10,400],spacing:[4,40],lane:[16,400],length:[400,4000],width:[41,150]};
 const clampTo=(v,[a,b])=>Math.max(a,Math.min(b,v)),snap=v=>Math.round(v*2)/2;
@@ -398,10 +398,13 @@ function drawPlan(svg,box,ph){
       sv('text',{x:p.x,y:p.z+5.2,fill:'#c7d1d6','font-size':1.3,'text-anchor':'middle'},it.short||k)))});
   slots.append(sv('text',{x:st.x-1.6,y:st.z-4.2,fill:'#c7d1d6','font-size':1.4},`장비 대기 지역 (${fmt(st.x)}, ${fmt(st.z)}) · 끌어서 이동`));
   kids.push(slots);
-  if(ph)ph.tracks.forEach(tr=>{const it=items[tr.k]||{};if(it.on===false)return;const col=it.color||'#f0b429';const pts=routeOf(G,tr);
+  if(ph)ph.tracks.forEach((tr,ti)=>{const it=items[tr.k]||{};if(it.on===false)return;const col=it.color||'#f0b429';const pts=routeOf(G,tr);
     kids.push(sv('polyline',{points:pts.map(q=>`${q.x},${q.z}`).join(' '),fill:'none',stroke:col,'stroke-width':.35,'stroke-linejoin':'round',opacity:.9,'pointer-events':'none'}));
-    pts.filter(q=>q.key).forEach(q=>kids.push(sv('circle',{cx:q.x,cy:q.z,r:.55,fill:q.rev?'#0b1013':col,stroke:col,'stroke-width':.25,'pointer-events':'none'}),
-      sv('text',{x:q.x+.8,y:q.z-.7,fill:col,'font-size':1.1,'pointer-events':'none'},String(q.u))))});
+    pts.filter(q=>q.key).forEach((q,ki)=>{const sel=selKey&&selKey.ti===ti&&selKey.ki===ki;
+      kids.push(sv('g',{'data-drag':'key','data-ti':ti,'data-ki':ki,style:'cursor:grab'},sv('circle',{cx:q.x,cy:q.z,r:1.4,fill:'transparent'}),
+        sel?sv('circle',{cx:q.x,cy:q.z,r:1.15,fill:'none',stroke:'#ffffff','stroke-width':.3}):null,
+        sv('circle',{cx:q.x,cy:q.z,r:.55,fill:q.rev?'#0b1013':col,stroke:col,'stroke-width':.25})),
+        sv('text',{x:q.x+.8,y:q.z-.7,fill:col,'font-size':1.1,'pointer-events':'none'},String(q.u)))})});
   svg.replaceChildren(...kids);
 }
 function drawMini(svg){const G=planGeometry(laySize),L=G.rw.length,W=G.rw.width,[a,b]=craterLim();
@@ -411,16 +414,42 @@ function drawMini(svg){const G=planGeometry(laySize),L=G.rw.length,W=G.rw.width,
       sv('text',{x:G.cx,y:-W/2-3,fill:'#f0b429','font-size':10,'text-anchor':'middle'},`피해 지점 x ${fmt(G.cx)} m · 끌어서 이동`)))}
 function svgPoint(svg,e){const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());return {x:q.x,z:q.y}}
 // 끌기: 누른 점과 시작 값을 기억했다가 움직이는 동안 값을 바꾸고 다시 그림. 놓으면 changed(true) 로 저장 · 되돌리기 · 3D 미리보기에 반영
+// 경로 점 끌기: {S,R,m} 좌표는 m 만 바꿔 크레이터 크기와의 관계를 유지합니다.
+const moveCoord=(v,dv)=>typeof v==='number'?v+snap(dv):Object.assign({},v,{m:(v.m||0)+snap(dv)});
+const layPh=()=>cfg.phases.find(p=>p.id===layPhase);
+const keyAt=(ti,ki)=>layPh().tracks[ti].keys[ki];
 const DRAG={
+  key:(s,d)=>{const q=keyAt(s.ti,s.ki);q.x=moveCoord(s.q0.x,d.x);q.z=moveCoord(s.q0.z,d.z)},
   staging:(s,d)=>{const st=cfg.site.staging;st.x=clampTo(snap(s.x+d.x),SITE_LIM.x);st.z=clampTo(snap(s.z+d.z),SITE_LIM.z)},
   lane:(s,d)=>{cfg.site.staging.lane=clampTo(snap(s.lane+d.z),SITE_LIM.lane)},
   crater:(s,d)=>{damage0().x=clampTo(snap(s.cx+d.x),craterLim())},
 };
 function draggable(svg,redraw){let drag=null;
   svg.addEventListener('pointerdown',e=>{const t=e.target.closest('[data-drag]');if(!t)return;e.preventDefault();svg.setPointerCapture(e.pointerId);
-    const st=cfg.site.staging;drag={kind:t.dataset.drag,p0:svgPoint(svg,e),s:{x:st.x,z:st.z,lane:st.lane,cx:+damage0().x||0}}});
-  svg.addEventListener('pointermove',e=>{if(!drag)return;const p=svgPoint(svg,e);DRAG[drag.kind](drag.s,{x:p.x-drag.p0.x,z:p.z-drag.p0.z});redraw()});
-  const end=()=>{if(!drag)return;drag=null;changed(true)};svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end)}
+    const st=cfg.site.staging,ti=+t.dataset.ti,ki=+t.dataset.ki;
+    if(t.dataset.drag==='key')selKey={ti,ki};
+    drag={kind:t.dataset.drag,p0:svgPoint(svg,e),moved:false,s:{x:st.x,z:st.z,lane:st.lane,cx:+damage0().x||0,ti,ki,q0:t.dataset.drag==='key'?clone(keyAt(ti,ki)):null}};redraw()});
+  svg.addEventListener('pointermove',e=>{if(!drag)return;const p=svgPoint(svg,e),d={x:p.x-drag.p0.x,z:p.z-drag.p0.z};if(!drag.moved&&Math.hypot(d.x,d.z)<0.25)return;
+    drag.moved=true;DRAG[drag.kind](drag.s,d);redraw()});
+  const end=()=>{if(!drag)return;const moved=drag.moved;drag=null;if(moved)changed(true);else render()};svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end)}
+// 고른 경로 점의 속성: 시점 u, 후진, 직선 이동, 좌표 방식. 점 추가 · 삭제
+const coordText=v=>typeof v==='number'?`${fmt(v,2)} m (고정)`:[v.S?`${v.S}×S`:'',v.R?`${v.R}×R`:'',v.m?`${v.m>0&&(v.S||v.R)?'+':''}${fmt(v.m,2)} m`:''].filter(Boolean).join(' ')||'0';
+function keyInspector(G){const ph=layPh();if(!ph||!selKey)return null;const tr=ph.tracks[selKey.ti],q=tr&&tr.keys[selKey.ki];if(!q){selKey=null;return null}
+  const it=cfg.equipment.items[tr.k]||{};
+  // 시점은 입력을 마칠 때(Enter · 칸 이동) 반영하고, 점 순서를 시점 순으로 다시 맞춥니다.
+  const uField=()=>{const inp=h('input',{type:'number',min:0,max:1,step:0.01,value:q.u,'aria-label':'단계 안의 시점'});
+    inp.addEventListener('change',()=>{const v=parseFloat(inp.value);if(!Number.isFinite(v)){inp.value=q.u;return}q.u=Math.max(0,Math.min(1,v));tr.keys.sort((a,b)=>a.u-b.u);selKey.ki=tr.keys.indexOf(q);changed(true)});
+    return h('label',{class:'f'},h('span',{text:'단계 안의 시점 (0~1)'}),inp)};
+  const flag=(label,k)=>{const c=h('input',{type:'checkbox',checked:!!q[k]});c.onchange=()=>{if(c.checked)q[k]=true;else delete q[k];changed(true)};return h('label',{class:'chk'},c,label)};
+  const fix=()=>{const c=v=>RADR_SCN.coord(v,G.S,G.R);q.x=Math.round(c(q.x)*100)/100;q.z=Math.round(c(q.z)*100)/100;changed(true)};
+  const add=()=>{const next=tr.keys[selKey.ki+1],u=next?Math.round((q.u+next.u)/2*1000)/1000:Math.min(1,Math.round((q.u+0.05)*1000)/1000);
+    const nq=clone(q);nq.u=u;nq.x=moveCoord(q.x,2);delete nq.rev;tr.keys.splice(selKey.ki+1,0,nq);selKey.ki++;changed(true)};
+  const del=()=>{tr.keys.splice(selKey.ki,1);selKey=null;changed(true)};
+  return card(`경로 점 · ${it.name||tr.k} ${selKey.ki+1}/${tr.keys.length}`,`x ${coordText(q.x)} · z ${coordText(q.z)}`,
+    h('p',{class:'note',text:'S = 절단 반폭, R = 크레이터 반지름. 끌면 m 값만 바뀌어 크레이터 규모가 달라져도 같은 자리(예: 절단선 바깥 4 m)를 지킵니다.'}),
+    h('div',{class:'grid'},uField()),
+    h('div',{class:'row'},flag('후진으로 도착','rev'),flag('일정한 속도로 직선 이동','lin')),
+    h('div',{class:'row'},h('button',{onclick:add},'+ 뒤에 점 추가'),h('button',{onclick:fix,title:'지금 규모에서의 값으로 고정합니다'},'고정 좌표로 바꾸기'),h('button',{class:'danger',disabled:tr.keys.length<=1,onclick:del},'점 삭제')))}
 VIEWS.layout=m=>{
   const sizeKeys=Object.keys(cfg.sizes);if(!sizeKeys.includes(laySize))laySize=sizeKeys.includes(cfg.defaultSize)?cfg.defaultSize:sizeKeys[0];
   const withTracks=visPhases().filter(p=>Array.isArray(p.tracks)&&p.tracks.length);if(!withTracks.some(p=>p.id===layPhase))layPhase=withTracks.length?withTracks[0].id:null;
@@ -433,12 +462,13 @@ VIEWS.layout=m=>{
   const legend=h('div',{class:'legend'});
   if(ph)ph.tracks.forEach(tr=>{const it=items[tr.k]||{};if(it.on===false)return;
     legend.append(h('span',null,h('i',{class:'sw',style:`background:${it.color||'#f0b429'}`}),`${it.name||tr.k} · 단계의 ${Math.round(tr.from*100)}~${Math.round(tr.to*100)}%`))});
-  const ps=h('select',{'aria-label':'단계'});withTracks.forEach(p=>ps.appendChild(h('option',{value:p.id,text:`${String(visPhases().indexOf(p)).padStart(2,'0')} ${p.title}`})));ps.value=layPhase||'';ps.onchange=()=>{layPhase=ps.value;render()};
+  const ps=h('select',{'aria-label':'단계'});withTracks.forEach(p=>ps.appendChild(h('option',{value:p.id,text:`${String(visPhases().indexOf(p)).padStart(2,'0')} ${p.title}`})));ps.value=layPhase||'';ps.onchange=()=>{layPhase=ps.value;selKey=null;render()};
   const ss=h('select',{'aria-label':'크레이터 규모'});sizeKeys.forEach(k=>ss.appendChild(h('option',{value:k,text:`${cfg.sizes[k].label} (Ø${cfg.sizes[k].dia} m)`})));ss.value=laySize;ss.onchange=()=>{laySize=ss.value;render()};
   damage0();const [ca,cb]=craterLim(),n=(label,path,lim,o)=>numF(label,path,Object.assign({min:lim[0],max:lim[1],step:0.5,unit:'m',after:redraw},o||{}));
-  m.append(h('h2',{text:'배치 · 평면도'}),h('p',{class:'lead',text:'작업 구역을 위에서 내려다본 그림입니다. 크레이터 중심이 원점이고, 칸 하나는 10 m 입니다. 장비 대기 지역과 이동로는 끌어서, 피해 지점은 아래 활주로 전체 그림에서 끌어서 옮깁니다(0.5 m 단위). 경로의 숫자는 단계 안의 시점(0~1)이고, 속이 빈 점은 후진입니다.'}),
+  m.append(h('h2',{text:'배치 · 평면도'}),h('p',{class:'lead',text:'작업 구역을 위에서 내려다본 그림입니다. 크레이터 중심이 원점이고, 칸 하나는 10 m 입니다. 장비 대기 지역 · 이동로 · 경로 점은 끌어서, 피해 지점은 아래 활주로 전체 그림에서 끌어서 옮깁니다(0.5 m 단위). 경로 점을 누르면 시점 · 후진 · 추가 · 삭제를 고칠 수 있습니다. 경로의 숫자는 단계 안의 시점(0~1)이고, 속이 빈 점은 후진입니다.'}),
     card('작업 구역',null,h('div',{class:'grid'},h('label',{class:'f'},h('span',{text:'경로를 볼 단계'}),ps),h('label',{class:'f'},h('span',{text:'크레이터 규모'}),ss)),svg,legend,
       h('div',{class:'row'},h('button',{disabled:!ph,onclick:()=>pvJump(visPhases().indexOf(ph))},'3D에서 이 단계 보기'))),
+    keyInspector(G),
     card('활주로 전체',`길이 ${fmt(L,0)} m · 폭 ${fmt(W,0)} m`,mini),
     card('현장 수치','끌기와 같은 값',h('div',{class:'grid'},
       n('피해 지점 x (활주로 중심에서)','damages.0.x',[ca,cb]),
